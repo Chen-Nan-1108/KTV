@@ -102,10 +102,11 @@
           <button class="add-btn">點播</button>
         `;
 
-        // 用安全的 JS 事件綁定，徹底解決韓文或特殊符號點擊無反應的問題
+        // 綁定點擊事件，並過濾掉標題中的單雙引號，確保韓文與特殊符號歌名 100% 正常點播
         const btn = div.querySelector('.add-btn');
         btn.onclick = () => {
-          addToQueue(item.id.videoId, item.snippet.title);
+          const safeTitle = item.snippet.title.replace(/['"]/g, '');
+          addToQueue(item.id.videoId, safeTitle);
         };
 
         container.appendChild(div);
