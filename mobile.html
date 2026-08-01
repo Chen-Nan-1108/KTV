@@ -54,7 +54,6 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // ⚠️ 請務必將下方換成你申請的 YouTube API Key
     const YT_API_KEY = "AIzaSyAqfIjspDncJP0FJa_n6XVXcb_VkPlinho";
 
     async function searchYT() {
@@ -69,7 +68,6 @@
         const res = await fetch(url);
         const data = await res.json();
         
-        // 檢查 Google API 是否有回傳錯誤 (協助 Debug)
         if (data.error) {
           console.error("API 錯誤詳情:", data.error);
           alert("API 錯誤: " + data.error.message);
@@ -89,16 +87,29 @@
         document.getElementById('searchResults').innerHTML = "找不到相關歌曲。";
         return;
       }
-      const html = items.map(item => `
-        <div class="result-item">
-          <div style="flex: 1; padding-right: 10px;">
-            <img src="${item.snippet.thumbnails.default.url}" style="width:100px; vertical-align:middle;">
+      
+      const container = document.getElementById('searchResults');
+      container.innerHTML = '';
+
+      items.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'result-item';
+        div.innerHTML = `
+          <div style="flex: 1; padding-right: 10px; display: flex; align-items: center;">
+            <img src="${item.snippet.thumbnails.default.url}" style="width:100px; margin-right: 10px;">
             <span>${item.snippet.title}</span>
           </div>
-          <button onclick="addToQueue('${item.id.videoId}', '${item.snippet.title.replace(/'/g, "\\'")}')">點播</button>
-        </div>
-      `).join('');
-      document.getElementById('searchResults').innerHTML = html;
+          <button class="add-btn">點播</button>
+        `;
+
+        // 用安全的 JS 事件綁定，徹底解決韓文或特殊符號點擊無反應的問題
+        const btn = div.querySelector('.add-btn');
+        btn.onclick = () => {
+          addToQueue(item.id.videoId, item.snippet.title);
+        };
+
+        container.appendChild(div);
+      });
     }
 
     function addToQueue(videoId, title) {
