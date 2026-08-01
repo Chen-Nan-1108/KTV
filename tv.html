@@ -67,6 +67,13 @@
           if (currentSongKey !== firstKey) {
             currentSongKey = firstKey;
             player.loadVideoById(nextVideoId);
+            
+            // 強制切換到最高可用畫質 (highres 會自動抓取影片支援的最高畫質)
+            setTimeout(() => {
+              if (player && typeof player.setPlaybackQuality === 'function') {
+                player.setPlaybackQuality('highres');
+              }
+            }, 1000);
           }
         } else {
           currentSongKey = null;
