@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
+    /* 讓影片滿版且不可點擊 */
+    #player { width: 100vw; height: 100vh; pointer-events: none; } 
+  </style>
+  <!-- 載入 Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+</head>
+<body>
+  <div id="player"></div>
+
+  <script>
+    // 你的專屬 Firebase 設定
+    const firebaseConfig = {
+      apiKey: "AIzaSyCBcNEQMbPobr00gzvEhYxeYmiuqXBmZF0",
+      authDomain: "realtime-database-69288.firebaseapp.com",
+      databaseURL: "https://realtime-database-69288-default-rtdb.firebaseio.com",
+      projectId: "realtime-database-69288",
+      storageBucket: "realtime-database-69288.firebasestorage.app",
+      messagingSenderId: "757099420036",
+      appId: "1:757099420036:web:4242dbf691bb93ec4de5d1",
+      measurementId: "G-4LLZ5HYQ1C"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    let player;
+    let currentSongKey = null;
+
+    // 載入 YouTube IFrame API
+    const tag = document.createElement('script');
+    tag.src = "https://www.youtube.com/iframe_api";
+    const firstScriptTag = document.getElementsByTagName('script')[0];
+    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+    function onYouTubeIframeAPIReady() {
+      player = new YT.Player('player', {
+        playerVars: { 
+          'autoplay': 1, 
+          'controls': 0,      // 隱藏進度條
+          'disablekb': 1,       // 停用鍵盤控制
+          'rel': 0,             // 播完不顯示推薦影片
+          'cc_load_policy': 1,  // 強制開啟 CC 字幕
+          'cc_lang_pref': 'zh-Hant' // 偏好繁體中文
+        },
+        events: {
+          'onReady': startListening,
+          'onStateChange': onPlayerStateChange
+        }
+      });
+    }
+
+    function startListening() {
+      // 監聽歌單
+      db.ref('ktv/queue').orderByChild('timestamp').on('value', (snapshot) => {
+        const queue = snapshot.val();
+        if (queue) {
+          const firstKey = Object.keys(queue)[0];
+          const nextVideoId = queue[firstKey].videoId;
+          
+          if (currentSongKey !== firstKey) {
+            currentSongKey = firstKey;
+            player.loadVideoById(nextVideoId);
+          }
+        } else {
+          currentSongKey = null;
+          player.stopVideo();
+        }
+      });
+
+      // 監聽遙控指令（已修復重複點擊無反應的問題）
+      db.ref('ktv/command').on('value', (snapshot) => {
+        const cmdData = snapshot.val();
+        if (!cmdData) return;
+
+        const cmd = (typeof cmdData === 'object') ? cmdData.action : cmdData;
+
+        if (cmd === 'pause') {
+          player.pauseVideo();
+        } else if (cmd === 'play') {
+          player.playVideo();
+        } else if (cmd === 'next') {
+          playNext();
+        }
+        
+        // 執行後立即清空指令，確保下次點擊一定會觸發
+        db.ref('ktv/command').set(null); 
+      });
+    }
+
+    // 狀態改變事件：播完自動切下一首
+    function onPlayerStateChange(event) {
+      if (event.data === YT.PlayerState.ENDED) {
+        playNext();
+      }
+    }
+
+    // 切歌邏輯
+    function playNext() {
+      if (currentSongKey) {
+        db.ref('ktv/queue/' + currentSongKey).remove();
+      }
+    }
+  </script>
+</body>
+</html>

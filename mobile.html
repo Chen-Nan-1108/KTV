@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KTV 點歌台</title>
+  <!-- 載入 Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; }
+    input { width: 70%; padding: 10px; font-size: 16px; }
+    button { padding: 10px; font-size: 16px; cursor: pointer; }
+    .result-item, .queue-item { border-bottom: 1px solid #ccc; padding: 10px 0; display: flex; justify-content: space-between; align-items: center; }
+    .queue-box { background: #f0f0f0; padding: 15px; margin-top: 20px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+
+  <h2>KTV 點歌台 🎤</h2>
+  
+  <!-- 搜尋區塊 -->
+  <div>
+    <input type="text" id="searchInput" placeholder="輸入歌名或歌手...">
+    <button onclick="searchYT()">搜尋</button>
+  </div>
+  <div id="searchResults"></div>
+
+  <!-- 遙控區塊 -->
+  <div style="margin-top: 20px;">
+    <button onclick="sendCommand('pause')">⏸ 暫停</button>
+    <button onclick="sendCommand('play')">▶ 播放</button>
+    <button onclick="sendCommand('next')">⏭ 切歌</button>
+  </div>
+
+  <!-- 待播清單 -->
+  <div class="queue-box">
+    <h3>目前排隊歌曲</h3>
+    <div id="queueList"></div>
+  </div>
+
+  <script>
+    // 你的專屬 Firebase 設定
+    const firebaseConfig = {
+      apiKey: "AIzaSyCBcNEQMbPobr00gzvEhYxeYmiuqXBmZF0",
+      authDomain: "realtime-database-69288.firebaseapp.com",
+      databaseURL: "https://realtime-database-69288-default-rtdb.firebaseio.com",
+      projectId: "realtime-database-69288",
+      storageBucket: "realtime-database-69288.firebasestorage.app",
+      messagingSenderId: "757099420036",
+      appId: "1:757099420036:web:4242dbf691bb93ec4de5d1",
+      measurementId: "G-4LLZ5HYQ1C"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // ⚠️ 請務必將下方換成你申請的 YouTube API Key
+    const YT_API_KEY = "AIzaSyAqfIjspDncJP0FJa_n6XVXcb_VkPlinho";
+
+    async function searchYT() {
+      const keyword = document.getElementById('searchInput').value;
+      if(!keyword) return;
+      
+      const q = encodeURIComponent(`${keyword} MV 歌詞`);
+      const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${q}&key=${YT_API_KEY}&maxResults=5`;
+      
+      document.getElementById('searchResults').innerHTML = "搜尋中...";
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        
+        // 檢查 Google API 是否有回傳錯誤 (協助 Debug)
+        if (data.error) {
+          console.error("API 錯誤詳情:", data.error);
+          alert("API 錯誤: " + data.error.message);
+          document.getElementById('searchResults').innerHTML = "";
+          return;
+        }
+        
+        renderResults(data.items);
+      } catch (e) {
+        console.error("執行錯誤:", e);
+        alert("執行失敗，請按 F12 查看 Console。");
+      }
+    }
+
+    function renderResults(items) {
+      if (!items || items.length === 0) {
+        document.getElementById('searchResults').innerHTML = "找不到相關歌曲。";
+        return;
+      }
+      const html = items.map(item => `
+        <div class="result-item">
+          <div style="flex: 1; padding-right: 10px;">
+            <img src="${item.snippet.thumbnails.default.url}" style="width:100px; vertical-align:middle;">
+            <span>${item.snippet.title}</span>
+          </div>
+          <button onclick="addToQueue('${item.id.videoId}', '${item.snippet.title.replace(/'/g, "\\'")}')">點播</button>
+        </div>
+      `).join('');
+      document.getElementById('searchResults').innerHTML = html;
+    }
+
+    function addToQueue(videoId, title) {
+      db.ref('ktv/queue').push({
+        videoId: videoId,
+        title: title,
+        timestamp: Date.now()
+      });
+      alert('已加入排隊！');
+      document.getElementById('searchResults').innerHTML = ''; 
+      document.getElementById('searchInput').value = '';
+    }
+
+    function sendCommand(cmd) {
+      db.ref('ktv/command').set(cmd);
+    }
+
+    // 監聽待播清單
+    db.ref('ktv/queue').orderByChild('timestamp').on('value', (snapshot) => {
+      const queue = snapshot.val();
+      if (!queue) {
+        document.getElementById('queueList').innerHTML = "目前無待播歌曲";
+        return;
+      }
+      const html = Object.keys(queue).map(key => `
+        <div class="queue-item">
+          <span>🎵 ${queue[key].title}</span>
+        </div>
+      `).join('');
+      document.getElementById('queueList').innerHTML = html;
+    });
+  </script>
+</body>
+</html>
