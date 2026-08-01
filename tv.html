@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <style>
     body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
-    /* 移除 pointer-events: none，讓播放器能正常接收互動與狀態 */
+    /* 讓播放器能正常接收互動與狀態 */
     #player { width: 100vw; height: 100vh; } 
   </style>
   <!-- 載入 Firebase SDK -->
@@ -42,10 +42,11 @@
       player = new YT.Player('player', {
         playerVars: { 
           'autoplay': 1, 
-          'controls': 0,      // 隱藏進度條
+          'controls': 0,        // 隱藏進度條
           'disablekb': 1,       // 停用鍵盤控制
           'rel': 0,             // 播完不顯示推薦影片
-          'cc_load_policy': 1,  // 強制開啟 CC 字幕
+          'hl': 'zh-Hant',      // 介面與播放器語系設為繁體中文
+          'cc_load_policy': 1,  // 強制開啟字幕
           'cc_lang_pref': 'zh-Hant' // 偏好繁體中文
         },
         events: {
