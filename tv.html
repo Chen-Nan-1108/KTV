@@ -79,12 +79,14 @@
     let youtubeLoaded = false;
     let qrVisible = false;
 
-    // 強效過濾標題：自動把雜訊、MV、高音質等字眼拿掉，只留乾淨歌名
+    // 🔥 升級版「暴力過濾」：把所有括號、書名號、專輯、歌詞、MV等雜訊全部切光光
     function cleanTitle(title) {
       return String(title || "")
-        .replace(/【.*?】|\[.*?\]|\(.*?\)|（.*?）/g, "")
-        .replace(/Official.*|MV|KTV|伴奏|動態歌詞|繁體|高音質|字幕|高清|畫質|HD|動畫|主題曲/gi, "")
-        .replace(/-+/g, "-").trim();
+        .replace(/[\(\（\[［「『【\{〈《].*?[\)\）\]］」』】\}〉》]/g, "") // 刪除各種中英文括號及內部文字
+        .replace(/\/\/.*$/, "") // 刪除 // 後面的所有說明文字
+        .replace(/Official.*|MV|KTV|伴奏|動態歌詞|繁體|高音質|字幕|高清|畫質|HD|動畫|主題曲|專輯|收錄在/gi, "")
+        .replace(/[-–—|/]+/g, " ") // 把連字號或斜線轉成空白
+        .trim();
     }
 
     function setText(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; }
