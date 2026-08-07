@@ -3,12 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>KTV</title>
+  <title>KTV 電視播放端</title>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
   <style>
-    /* ... 保持你原本的 CSS 樣式 ... */
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: "Segoe UI", Arial, sans-serif; }
     #player { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; pointer-events: none; }
@@ -24,6 +23,7 @@
     #connectionStatus { position: absolute; right: 20px; top: 20px; z-index: 50; color: #00e676; font-size: 10px; opacity: 0.8; }
     #qrContainer { position: absolute; bottom: 40px; right: 40px; z-index: 100; background: white; padding: 15px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8); display: none; flex-direction: column; align-items: center; }
     #qrContainer img { width: 150px; height: 150px; }
+    #shortcutHint { position: absolute; bottom: 20px; left: 20px; z-index: 30; color: rgba(255, 255, 255, 0.35); font-size: 11px; pointer-events: none; }
   </style>
 </head>
 <body>
@@ -33,8 +33,9 @@
     <div id="nextSong" class="card"><div class="label">⏭ 下一首</div><div class="title" id="nextSongTitle"></div></div>
   </div>
   <div id="connectionStatus">● CONNECTING</div>
-  <div id="qrContainer"><img id="qrImg" src="" alt="QR"><div class="qr-text">掃描立即點歌</div></div>
+  <div id="qrContainer"><img id="qrImg" src="" alt="QR"><div class="qr-text" style="color:#000; font-weight:bold; margin-top:10px;">掃描立即點歌</div></div>
   <div id="player"></div>
+  <div id="shortcutHint">ENTER / ↑ 顯示／隱藏 QR Code</div>
 
   <script>
     const firebaseConfig = {
@@ -51,7 +52,7 @@
     const db = firebase.database();
     const auth = firebase.auth();
 
-    // 🎯 最強乾淨歌名過濾
+    // 🎯 強效乾淨歌名過濾
     function cleanSongTitle(title) {
       if (!title) return "未知歌曲";
       let t = String(title).trim();
@@ -62,37 +63,146 @@
       return t.replace(/[-–—|/]+/g, " ").replace(/\s+/g, " ").trim();
     }
 
-    // 直接寫死密碼，確保登入不報錯
+    // 登入 TV 帳號
     auth.signInWithEmailAndPassword("tv@ktv.local", "14721472").then(() => {
+      document.getElementById("connectionStatus").textContent = "● ONLINE";
       document.getElementById("idleMessage").textContent = "TV 已連線，等待點歌...";
       const script = document.createElement("script");
       script.src = "https://www.youtube.com/iframe_api";
       document.head.appendChild(script);
+    }).catch(err => {
+      console.error(err);
+      document.getElementById("connectionStatus").textContent = "● LOGIN ERROR";
+      document.getElementById("idleMessage").textContent = "登入失敗，請檢查密碼";
     });
 
     let player;
+    let playerReady = false;
+    let currentVideoId = null;
+
     window.onYouTubeIframeAPIReady = () => {
-      player = new YT.Player("player", { width: "100%", height: "100%", playerVars: { autoplay: 1, controls: 0 }, events: { onStateChange: e => { if(e.data === 0) db.ref("ktv/nowPlaying").remove(); } } });
-      
-      db.ref("ktv/nowPlaying").on("value", snap => {
-        const data = snap.val();
-        if(data) {
+      player = new YT.Player("player", {
+        width: "100%", height: "100%",
+        playerVars: { autoplay: 1, controls: 0, disablekb: 1, rel: 0 },
+        events: {
+          onReady: () => { playerReady = true; checkQueueAndPlay(); },
+          onStateChange: e => { if (e.data === YT.PlayerState.ENDED) playNextSong(); }
+        }
+      });
+      initListeners();
+    };
+
+    // 監聽 Firebase 佇列與目前播放狀態
+    function initListeners() {
+      db.ref("ktv").on("value", snap => {
+        const data = snap.val() || {};
+        const nowPlaying = data.nowPlaying;
+        const queue = data.queue || {};
+        
+        // 1. 處理目前播放
+        if (nowPlaying) {
           document.getElementById("idleScreen").style.display = "none";
           document.getElementById("nowPlaying").style.display = "block";
-          document.getElementById("nowPlayingTitle").textContent = cleanSongTitle(data.title);
-          player.loadVideoById(data.videoId);
+          document.getElementById("nowPlayingTitle").textContent = cleanSongTitle(nowPlaying.title);
+          
+          if (playerReady && player && currentVideoId !== nowPlaying.videoId) {
+            currentVideoId = nowPlaying.videoId;
+            player.loadVideoById(nowPlaying.videoId);
+          }
         } else {
           document.getElementById("idleScreen").style.display = "flex";
           document.getElementById("nowPlaying").style.display = "none";
+          currentVideoId = null;
+          // 如果目前沒歌播，但清單有歌，自動抓下一首
+          checkQueueAndPlay();
+        }
+
+        // 2. 處理下一首預告
+        const priority = Object.values(queue.priority || {});
+        const normal = Object.values(queue.normal || {});
+        priority.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+        normal.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+        
+        const next = priority.length > 0 ? priority[0] : normal[0];
+        if (next) {
+          document.getElementById("nextSong").style.display = "block";
+          document.getElementById("nextSongTitle").textContent = cleanSongTitle(next.title);
+        } else {
+          document.getElementById("nextSong").style.display = "none";
         }
       });
-    };
+    }
 
+    // 自動把清單第一首歌抓來播
+    async function checkQueueAndPlay() {
+      if (!playerReady) return;
+      const snap = await db.ref("ktv/nowPlaying").once("value");
+      if (snap.exists()) return; // 正在播就跳過
+
+      const qSnap = await db.ref("ktv/queue").once("value");
+      const q = qSnap.val() || {};
+      const priority = q.priority || {};
+      const normal = q.normal || {};
+
+      let targetKey = null;
+      let targetType = null;
+      let targetSong = null;
+
+      const pKeys = Object.keys(priority);
+      if (pKeys.length > 0) {
+        targetKey = pKeys[0];
+        targetType = "priority";
+        targetSong = priority[targetKey];
+      } else {
+        const nKeys = Object.keys(normal);
+        if (nKeys.length > 0) {
+          targetKey = nKeys[0];
+          targetType = "normal";
+          targetSong = normal[targetKey];
+        }
+      }
+
+      if (targetSong) {
+        // 原子操作：設定為目前播放，並從清單中移除
+        const updates = {};
+        updates["ktv/nowPlaying"] = targetSong;
+        updates[`ktv/queue/${targetType}/${targetKey}`] = null;
+        await db.ref().update(updates);
+      }
+    }
+
+    // 播完自動切歌
+    async function playNextSong() {
+      const nowSnap = await db.ref("ktv/nowPlaying").once("value");
+      const current = nowSnap.val();
+      if (current) {
+        await db.ref("ktv/history").push({ ...current, playedAt: Date.now() });
+      }
+      await db.ref("ktv/nowPlaying").remove();
+      checkQueueAndPlay();
+    }
+
+    // 支援遙控指令（切歌、暫停等）
+    db.ref("ktv/commands").on("child_added", async snap => {
+      const cmd = snap.val();
+      if (!cmd || !playerReady || !player) { snap.ref.remove(); return; }
+      if (cmd.action === "next") { playNextSong(); }
+      else if (cmd.action === "pause") { player.pauseVideo(); }
+      else if (cmd.action === "play") { player.playVideo(); }
+      else if (cmd.action === "volUp") { player.setVolume(Math.min(player.getVolume() + 10, 100)); }
+      else if (cmd.action === "volDown") { player.setVolume(Math.max(player.getVolume() - 10, 0)); }
+      snap.ref.remove();
+    });
+
+    // 快捷鍵開關 QR Code
     window.addEventListener("keydown", e => {
-      if(e.key === "Enter" || e.key === "ArrowUp") {
+      if (e.key === "Enter" || e.key === "ArrowUp") {
         const qr = document.getElementById("qrContainer");
-        qr.style.display = (qr.style.display === "flex" ? "none" : "flex");
-        if(qr.style.display === "flex") document.getElementById("qrImg").src = "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=" + window.location.origin;
+        const isOpen = qr.style.display === "flex";
+        qr.style.display = isOpen ? "none" : "flex";
+        if (!isOpen) {
+          document.getElementById("qrImg").src = "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=" + encodeURIComponent(window.location.origin);
+        }
       }
     });
   </script>
