@@ -21,8 +21,12 @@
     .label { font-size: 10px; font-weight: bold; color: #888; margin-bottom: 2px; text-transform: uppercase; }
     .title { font-size: 18px; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     #connectionStatus { position: absolute; right: 20px; top: 20px; z-index: 50; color: #00e676; font-size: 10px; opacity: 0.8; }
+    
     #qrContainer { position: absolute; bottom: 40px; right: 40px; z-index: 100; background: white; padding: 15px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8); display: none; flex-direction: column; align-items: center; }
-    #qrContainer img { width: 150px; height: 150px; }
+    #qrContainer.show { display: flex !important; }
+    #qrContainer img { width: 150px; height: 150px; display: block; }
+    .qr-text { color: #000; font-weight: bold; margin-top: 10px; font-size: 16px; }
+    
     #shortcutHint { position: absolute; bottom: 20px; left: 20px; z-index: 30; color: rgba(255, 255, 255, 0.35); font-size: 11px; pointer-events: none; }
   </style>
 </head>
@@ -33,7 +37,12 @@
     <div id="nextSong" class="card"><div class="label">⏭ 下一首</div><div class="title" id="nextSongTitle"></div></div>
   </div>
   <div id="connectionStatus">● CONNECTING</div>
-  <div id="qrContainer"><img id="qrImg" src="" alt="QR"><div class="qr-text" style="color:#000; font-weight:bold; margin-top:10px;">掃描立即點歌</div></div>
+  
+  <div id="qrContainer">
+    <img id="qrImg" src="" alt="QR Code">
+    <div class="qr-text">掃描立即點歌</div>
+  </div>
+
   <div id="player"></div>
   <div id="shortcutHint">ENTER / ↑ 顯示／隱藏 QR Code</div>
 
@@ -52,7 +61,6 @@
     const db = firebase.database();
     const auth = firebase.auth();
 
-    // 🎯 強效乾淨歌名過濾
     function cleanSongTitle(title) {
       if (!title) return "未知歌曲";
       let t = String(title).trim();
@@ -63,7 +71,6 @@
       return t.replace(/[-–—|/]+/g, " ").replace(/\s+/g, " ").trim();
     }
 
-    // 登入 TV 帳號
     auth.signInWithEmailAndPassword("tv@ktv.local", "14721472").then(() => {
       document.getElementById("connectionStatus").textContent = "● ONLINE";
       document.getElementById("idleMessage").textContent = "TV 已連線，等待點歌...";
@@ -92,13 +99,22 @@
       initListeners();
     };
 
-    // 監聽手機端寫入的 ktv/state 結構
+    // QR Code 顯示與隱藏切換函式
+    function toggleQR() {
+      const qr = document.getElementById("qrContainer");
+      qr.classList.toggle("show");
+      if (qr.classList.contains("show")) {
+        // 自動抓取主網址產生 QR Code
+        const targetURL = window.location.origin + "/mobile.html";
+        document.getElementById("qrImg").src = "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=" + encodeURIComponent(targetURL);
+      }
+    }
+
     function initListeners() {
       db.ref("ktv/state").on("value", snap => {
         const state = snap.val() || {};
         const nowPlaying = state.nowPlaying;
         
-        // 1. 處理目前播放
         if (nowPlaying) {
           document.getElementById("idleScreen").style.display = "none";
           document.getElementById("nowPlaying").style.display = "block";
@@ -107,15 +123,18 @@
           if (playerReady && player && currentVideoId !== nowPlaying.videoId) {
             currentVideoId = nowPlaying.videoId;
             player.loadVideoById(nowPlaying.videoId);
+            player.playVideo();
           }
         } else {
           document.getElementById("idleScreen").style.display = "flex";
           document.getElementById("nowPlaying").style.display = "none";
           currentVideoId = null;
+          if (playerReady && player && typeof player.stopVideo === "function") {
+            player.stopVideo();
+          }
           checkAndPlayNext();
         }
 
-        // 2. 處理下一首預告
         const priority = Object.values(state.priority || {});
         const normal = Object.values(state.normal || {});
         priority.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
@@ -131,7 +150,6 @@
       });
     }
 
-    // 自動從 state 中抓取第一首歌來播
     async function checkAndPlayNext() {
       if (!playerReady) return;
       const snap = await db.ref("ktv/state/nowPlaying").once("value");
@@ -168,38 +186,38 @@
       }
     }
 
-    // 播完自動切歌
     async function playNextSong() {
       const nowSnap = await db.ref("ktv/state/nowPlaying").once("value");
       const current = nowSnap.val();
       if (current) {
         await db.ref("ktv/history").push({ ...current, playedAt: Date.now() });
       }
+      if (playerReady && player) {
+        player.stopVideo();
+      }
       await db.ref("ktv/state/nowPlaying").remove();
       checkAndPlayNext();
     }
 
-    // 遙控指令
+    // 監聽手機端傳來的遙控指令（包含 toggleQR、next、pause 等）
     db.ref("ktv/commands").on("child_added", async snap => {
       const cmd = snap.val();
-      if (!cmd || !playerReady || !player) { snap.ref.remove(); return; }
+      if (!cmd) { snap.ref.remove(); return; }
+      
       if (cmd.action === "next") { playNextSong(); }
-      else if (cmd.action === "pause") { player.pauseVideo(); }
-      else if (cmd.action === "play") { player.playVideo(); }
-      else if (cmd.action === "volUp") { player.setVolume(Math.min(player.getVolume() + 10, 100)); }
-      else if (cmd.action === "volDown") { player.setVolume(Math.max(player.getVolume() - 10, 0)); }
+      else if (cmd.action === "pause" && playerReady && player) { player.pauseVideo(); }
+      else if (cmd.action === "play" && playerReady && player) { player.playVideo(); }
+      else if (cmd.action === "volUp" && playerReady && player) { player.setVolume(Math.min(player.getVolume() + 10, 100)); }
+      else if (cmd.action === "volDown" && playerReady && player) { player.setVolume(Math.max(player.getVolume() - 10, 0)); }
+      else if (cmd.action === "toggleQR") { toggleQR(); }
+      
       snap.ref.remove();
     });
 
-    // 快捷鍵開關 QR Code
+    // 鍵盤快捷鍵切換 QR Code
     window.addEventListener("keydown", e => {
       if (e.key === "Enter" || e.key === "ArrowUp") {
-        const qr = document.getElementById("qrContainer");
-        const isOpen = qr.style.display === "flex";
-        qr.style.display = isOpen ? "none" : "flex";
-        if (!isOpen) {
-          document.getElementById("qrImg").src = "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=" + encodeURIComponent(window.location.origin);
-        }
+        toggleQR();
       }
     });
   </script>
