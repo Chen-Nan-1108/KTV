@@ -3,44 +3,116 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>KTV 點歌台</title>
-  <!-- 載入 Firebase SDK -->
+  <title>KTV 智慧點歌台 V5 (語音翻頁版)</title>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
   <style>
-    body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; }
-    input { width: 70%; padding: 10px; font-size: 16px; }
-    button { padding: 10px; font-size: 16px; cursor: pointer; }
-    .result-item, .queue-item { border-bottom: 1px solid #ccc; padding: 10px 0; display: flex; justify-content: space-between; align-items: center; }
-    .queue-box { background: #f0f0f0; padding: 15px; margin-top: 20px; border-radius: 8px; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 16px; max-width: 680px; margin-left: auto; margin-right: auto; background: #101014; color: #fff; font-family: "Segoe UI", Arial, sans-serif; }
+    h2 { text-align: center; color: #ff2a5f; text-shadow: 0 0 12px rgba(255, 42, 95, 0.5); margin-bottom: 15px; }
+    .status { text-align: center; color: #718093; font-size: 13px; margin-bottom: 12px; }
+    
+    .search-box { display: flex; gap: 8px; margin-bottom: 10px; }
+    #searchInput { flex: 1; min-width: 0; padding: 14px; font-size: 16px; border: none; border-radius: 10px; background: #1e1e24; color: white; outline: none; }
+    .btn-primary { background: linear-gradient(135deg, #ff2a5f, #ff758c); color: white; border: none; padding: 0 22px; border-radius: 10px; font-size: 16px; cursor: pointer; font-weight: bold; }
+    
+    /* 語音與載入更多按鈕樣式 */
+    .btn-voice { background: #2d2d38; color: white; border: 1px solid #3d3d48; padding: 0 15px; border-radius: 10px; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .btn-voice:active { background: #3d3d48; }
+    .btn-load-more { width: 100%; background: #1e1e24; color: #00e676; border: 1px dashed #00e676; padding: 12px; border-radius: 10px; font-size: 15px; cursor: pointer; margin-top: 15px; display: none; font-weight: bold; }
+
+    .filter-options { font-size: 13px; color: #b2bec3; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; }
+    .filter-options input { accent-color: #ff2a5f; width: 16px; height: 16px; }
+    
+    .remote-ctrl { display: flex; flex-wrap: wrap; gap: 8px; margin: 15px 0; }
+    .remote-ctrl button { flex: 1 1 calc(33.333% - 8px); background: #1e1e24; color: #fff; border: 1px solid #2d2d38; padding: 12px 8px; border-radius: 10px; font-size: 14px; cursor: pointer; font-weight: 600; }
+    .remote-ctrl button:active { background: #2d2d38; }
+    .btn-qr { flex: 1 1 100% !important; background: #0984e3 !important; border: none !important; }
+    
+    .queue-box { background: #16161b; padding: 16px; border-radius: 14px; border: 1px solid #262630; margin-bottom: 15px;}
+    .queue-box h3 { margin-top: 0; color: #ff2a5f; font-size: 17px; border-bottom: 1px solid #262630; padding-bottom: 10px; }
+    
+    .result-item, .queue-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #1f1f28; gap: 8px; }
+    .result-item img { width: 80px; height: 45px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
+    .item-info { flex: 1; min-width: 0; overflow: hidden; padding-right: 5px; }
+    .item-info span { display: block; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    
+    .action-btns { display: flex; gap: 5px; flex-shrink: 0; }
+    .add-btn, .insert-btn, .del-btn { border: none; padding: 8px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: bold; flex-shrink: 0;}
+    .add-btn { background: #00e676; color: #000; }
+    .insert-btn { background: #ff9f43; color: #000; }
+    .del-btn { background: rgba(255, 59, 48, 0.15); color: #ff3b30; border: 1px solid rgba(255, 59, 48, 0.3); }
+    
+    .priority-title { color: #ff9f43; }
+    .normal-title { color: #f1f2f6; }
+    .now-title { color: #00e676; font-weight: bold; }
+    
+    .toggle-history-btn { width: 100%; background: #2d2d38; color: white; border: none; padding: 12px; border-radius: 10px; font-size: 15px; font-weight: bold; cursor: pointer; margin-bottom: 30px; }
+    #historyBox { display: none; }
+    
+    #toast { visibility: hidden; min-width: 240px; max-width: 90vw; background-color: #2d2d38; color: #fff; text-align: center; border-radius: 25px; padding: 12px; position: fixed; z-index: 100; left: 50%; bottom: 30px; transform: translateX(-50%); font-size: 14px; box-shadow: 0 8px 25px rgba(0, 0, 0, 0.6); }
+    #toast.show { visibility: visible; animation: fadein 0.4s, fadeout 0.4s 2.4s; }
+    @keyframes fadein { from { bottom: 0; opacity: 0; } to { bottom: 30px; opacity: 1; } }
+    @keyframes fadeout { from { bottom: 30px; opacity: 1; } to { bottom: 0; opacity: 0; } }
+    
+    @media (max-width: 480px) {
+      body { padding: 10px; }
+      .result-item { align-items: flex-start; }
+      .result-item img { width: 70px; height: 40px; }
+      .action-btns { flex-direction: column; }
+      .remote-ctrl button { flex: 1 1 calc(50% - 8px); }
+    }
   </style>
 </head>
 <body>
 
-  <h2>KTV 點歌台 🎤</h2>
-  
-  <!-- 搜尋區塊 -->
-  <div>
-    <input type="text" id="searchInput" placeholder="輸入歌名或歌手...">
-    <button onclick="searchYT()">搜尋</button>
+  <h2>🎤 KTV 智慧點歌台</h2>
+  <div class="status" id="authStatus">正在連線...</div>
+
+  <div class="search-box">
+    <input type="text" id="searchInput" placeholder="輸入歌名或歌手" maxlength="100" autocomplete="off">
+    <button class="btn-voice" id="btnVoice" title="語音搜尋">🎤</button>
+    <button class="btn-primary" id="btnSearch">搜尋</button>
   </div>
+
+  <div class="filter-options">
+    <input type="checkbox" id="ktvMode" checked>
+    <label for="ktvMode">自動搜尋繁體歌詞 / KTV</label>
+  </div>
+
   <div id="searchResults"></div>
+  <button class="btn-load-more" id="btnLoadMore">⬇️ 載入更多結果</button>
 
-  <!-- 遙控區塊 -->
-  <div style="margin-top: 20px;">
-    <button onclick="sendCommand('pause')">⏸ 暫停</button>
-    <button onclick="sendCommand('play')">▶ 播放</button>
-    <button onclick="sendCommand('next')">⏭ 切歌</button>
+  <div class="remote-ctrl">
+    <button id="btnPause">⏸ 暫停</button>
+    <button id="btnPlay">▶ 播放</button>
+    <button id="btnNext">⏭ 切歌</button>
+    <button id="btnVolDown">🔉 音量-</button>
+    <button id="btnMute">🔇 靜音</button>
+    <button id="btnVolUp">🔊 音量+</button>
+    <button class="btn-qr" id="btnToggleQR">📲 顯示 / 隱藏 TV QR Code</button>
   </div>
 
-  <!-- 待播清單 -->
   <div class="queue-box">
-    <h3>目前排隊歌曲</h3>
-    <div id="queueList"></div>
+    <h3>▶ 正在播放</h3>
+    <div id="nowPlayingSection" style="color:#718093; text-align:center; padding:10px;">尚無歌曲</div>
   </div>
+
+  <div class="queue-box">
+    <h3>🎵 待播清單</h3>
+    <div id="queueList" style="color:#718093; text-align:center; padding:10px;">目前無待播歌曲</div>
+  </div>
+
+  <button class="toggle-history-btn" id="btnToggleHistory">📜 展開歷史點歌紀錄</button>
+  <div class="queue-box" id="historyBox">
+    <h3>📜 歷史紀錄</h3>
+    <div id="historyList" style="color:#718093; text-align:center; padding:10px;">尚無紀錄</div>
+  </div>
+
+  <div id="toast"></div>
 
   <script>
-    // 你的專屬 Firebase 設定
     const firebaseConfig = {
       apiKey: "AIzaSyCBcNEQMbPobr00gzvEhYxeYmiuqXBmZF0",
       authDomain: "realtime-database-69288.firebaseapp.com",
@@ -51,96 +123,365 @@
       appId: "1:757099420036:web:4242dbf691bb93ec4de5d1",
       measurementId: "G-4LLZ5HYQ1C"
     };
-    firebase.initializeApp(firebaseConfig);
+
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
+    const auth = firebase.auth();
 
     const YT_API_KEY = "AIzaSyAqfIjspDncJP0FJa_n6XVXcb_VkPlinho";
 
-    async function searchYT() {
-      const keyword = document.getElementById('searchInput').value;
-      if(!keyword) return;
-      
-      const q = encodeURIComponent(`${keyword} MV 歌詞`);
-      const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${q}&key=${YT_API_KEY}&maxResults=5`;
-      
-      document.getElementById('searchResults').innerHTML = "搜尋中...";
+    /* --- Helpers --- */
+    let toastTimer = null;
+    function showToast(message) {
+      const toast = document.getElementById("toast");
+      toast.textContent = message;
+      toast.className = "show";
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove("show"), 3000);
+    }
+
+    function createEmptyMessage(text) {
+      const element = document.createElement("div");
+      element.textContent = text;
+      element.style.color = "#718093";
+      element.style.textAlign = "center";
+      element.style.padding = "10px";
+      return element;
+    }
+
+    function cleanTitle(title) {
+      const original = String(title || "");
+      const cleaned = original
+        .replace(/【.*?】|\[.*?\]|\(.*?\)|（.*?）/g, "")
+        .replace(/Official Music Video|Official Video|MV|KTV伴奏|KTV版|動態歌詞|繁體|高音質|字幕/gi, "")
+        .replace(/\|.*/g, "").trim();
+      return (cleaned || original).slice(0, 200);
+    }
+
+    function createSafeThumbnail(url) {
       try {
-        const res = await fetch(url);
-        const data = await res.json();
-        
-        if (data.error) {
-          console.error("API 錯誤詳情:", data.error);
-          alert("API 錯誤: " + data.error.message);
-          document.getElementById('searchResults').innerHTML = "";
-          return;
+        const parsed = new URL(url);
+        if (parsed.protocol !== "https:") throw new Error("Invalid protocol");
+        if (parsed.hostname !== "i.ytimg.com") throw new Error("Invalid thumbnail host");
+        const image = document.createElement("img");
+        image.src = parsed.href;
+        image.loading = "lazy";
+        image.referrerPolicy = "no-referrer";
+        return image;
+      } catch (error) {
+        const placeholder = document.createElement("div");
+        placeholder.style.width = "80px"; placeholder.style.height = "45px";
+        placeholder.style.background = "#22222a"; placeholder.style.borderRadius = "6px";
+        return placeholder;
+      }
+    }
+
+    /* --- Authentication --- */
+    let currentUser = null;
+    auth.onAuthStateChanged(user => {
+      currentUser = user || null;
+      if (user) {
+        document.getElementById("authStatus").textContent = "🟢 已連線，可以點歌";
+        startDatabaseListeners();
+      } else {
+        document.getElementById("authStatus").textContent = "🔄 正在登入...";
+      }
+    });
+
+    auth.signInAnonymously().catch(error => {
+      console.error(error);
+      document.getElementById("authStatus").textContent = "🔴 登入失敗";
+      showToast("Firebase 登入失敗");
+    });
+
+    /* --- YouTube Search (支援語音與翻頁) --- */
+    let currentSearchQuery = "";
+    let currentNextPageToken = "";
+
+    async function searchYT(isLoadMore = false) {
+      const input = document.getElementById("searchInput");
+      const container = document.getElementById("searchResults");
+      const loadMoreBtn = document.getElementById("btnLoadMore");
+
+      if (!isLoadMore) {
+        let keyword = input.value.trim();
+        if (!keyword) return showToast("請輸入歌名或歌手");
+        if (keyword.length > 100) keyword = keyword.slice(0, 100);
+
+        if (document.getElementById("ktvMode").checked && !/歌詞|Lyrics/i.test(keyword)) {
+          keyword += " 繁體 歌詞";
         }
         
-        renderResults(data.items);
-      } catch (e) {
-        console.error("執行錯誤:", e);
-        alert("執行失敗，請按 F12 查看 Console。");
+        currentSearchQuery = keyword;
+        currentNextPageToken = "";
+        container.textContent = "🔍 搜尋中...";
+        loadMoreBtn.style.display = "none";
+      } else {
+        loadMoreBtn.textContent = "載入中...";
+        loadMoreBtn.disabled = true;
+      }
+
+      const params = new URLSearchParams({
+        part: "snippet", type: "video", q: currentSearchQuery, key: YT_API_KEY, maxResults: "6"
+      });
+      if (isLoadMore && currentNextPageToken) params.append("pageToken", currentNextPageToken);
+
+      try {
+        const response = await fetch("https://www.googleapis.com/youtube/v3/search?" + params.toString(), { method: "GET", credentials: "omit" });
+        if (!response.ok) throw new Error("YouTube HTTP " + response.status);
+        const data = await response.json();
+
+        if (!isLoadMore) container.textContent = ""; 
+
+        if (!data.items || data.items.length === 0) {
+          if (!isLoadMore) container.appendChild(createEmptyMessage("找不到結果"));
+          loadMoreBtn.style.display = "none";
+          return;
+        }
+
+        data.items.forEach(item => {
+          const videoId = item?.id?.videoId;
+          if (!videoId) return;
+
+          const cleanedName = cleanTitle(item.snippet.title);
+          const result = document.createElement("div");
+          result.className = "result-item";
+
+          const thumbnail = createSafeThumbnail(item.snippet.thumbnails.default.url);
+          const info = document.createElement("div"); info.className = "item-info";
+          const title = document.createElement("span"); title.textContent = cleanedName;
+          info.appendChild(title);
+
+          const actions = document.createElement("div"); actions.className = "action-btns";
+          
+          const normalButton = document.createElement("button");
+          normalButton.className = "add-btn"; normalButton.textContent = "一般";
+          normalButton.addEventListener("click", () => addToQueue(videoId, cleanedName, false));
+
+          const priorityButton = document.createElement("button");
+          priorityButton.className = "insert-btn"; priorityButton.textContent = "插播";
+          priorityButton.addEventListener("click", () => addToQueue(videoId, cleanedName, true));
+
+          actions.append(normalButton, priorityButton);
+          result.append(thumbnail, info, actions);
+          container.appendChild(result);
+        });
+
+        if (data.nextPageToken) {
+          currentNextPageToken = data.nextPageToken;
+          loadMoreBtn.style.display = "block";
+          loadMoreBtn.textContent = "⬇️ 載入更多結果";
+          loadMoreBtn.disabled = false;
+        } else {
+          currentNextPageToken = "";
+          loadMoreBtn.style.display = "none";
+        }
+      } catch (error) {
+        console.error("YouTube search:", error);
+        if (!isLoadMore) {
+          container.textContent = "";
+          container.appendChild(createEmptyMessage("搜尋失敗，可能是 API Key / 網路問題"));
+        } else {
+          loadMoreBtn.textContent = "載入失敗，點擊重試";
+          loadMoreBtn.disabled = false;
+        }
       }
     }
 
-    function renderResults(items) {
-      if (!items || items.length === 0) {
-        document.getElementById('searchResults').innerHTML = "找不到相關歌曲。";
-        return;
-      }
+    /* --- 語音搜尋設定 --- */
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const btnVoice = document.getElementById("btnVoice");
+    
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'zh-TW';
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+
+      btnVoice.addEventListener("click", () => {
+        try {
+          recognition.start();
+          btnVoice.textContent = "🎙️";
+          btnVoice.style.background = "#ff2a5f";
+          showToast("請說出您想找的歌手或歌名...");
+        } catch (e) {
+          console.error(e);
+        }
+      });
+
+      recognition.addEventListener("result", event => {
+        const transcript = event.results[0][0].transcript;
+        document.getElementById("searchInput").value = transcript;
+        showToast(`聽到了：${transcript}`);
+        searchYT(false);
+      });
+
+      recognition.addEventListener("end", () => {
+        btnVoice.textContent = "🎤";
+        btnVoice.style.background = "#2d2d38";
+      });
+
+      recognition.addEventListener("error", () => {
+        showToast("語音辨識失敗，請確認麥克風權限");
+        btnVoice.textContent = "🎤";
+        btnVoice.style.background = "#2d2d38";
+      });
+    } else {
+      btnVoice.style.display = "none";
+    }
+
+    document.getElementById("btnLoadMore").addEventListener("click", () => searchYT(true));
+
+    /* --- Add Queue --- */
+    async function addToQueue(videoId, title, isPriority) {
+      if (!currentUser) return showToast("尚未登入 Firebase");
+      if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) return showToast("無效的影片");
       
-      const container = document.getElementById('searchResults');
-      container.innerHTML = '';
+      const queueType = isPriority ? "priority" : "normal";
+      const song = { videoId: String(videoId), title: String(title).slice(0, 200), timestamp: firebase.database.ServerValue.TIMESTAMP, uid: currentUser.uid };
 
-      items.forEach(item => {
-        const div = document.createElement('div');
-        div.className = 'result-item';
-        div.innerHTML = `
-          <div style="flex: 1; padding-right: 10px; display: flex; align-items: center;">
-            <img src="${item.snippet.thumbnails.default.url}" style="width:100px; margin-right: 10px;">
-            <span>${item.snippet.title}</span>
-          </div>
-          <button class="add-btn">點播</button>
-        `;
-
-        // 綁定點擊事件，並過濾掉標題中的單雙引號，確保韓文與特殊符號歌名 100% 正常點播
-        const btn = div.querySelector('.add-btn');
-        btn.onclick = () => {
-          const safeTitle = item.snippet.title.replace(/['"]/g, '');
-          addToQueue(item.id.videoId, safeTitle);
-        };
-
-        container.appendChild(div);
-      });
-    }
-
-    function addToQueue(videoId, title) {
-      db.ref('ktv/queue').push({
-        videoId: videoId,
-        title: title,
-        timestamp: Date.now()
-      });
-      alert('已加入排隊！');
-      document.getElementById('searchResults').innerHTML = ''; 
-      document.getElementById('searchInput').value = '';
-    }
-
-    function sendCommand(cmd) {
-      db.ref('ktv/command').set(cmd);
-    }
-
-    // 監聽待播清單
-    db.ref('ktv/queue').orderByChild('timestamp').on('value', (snapshot) => {
-      const queue = snapshot.val();
-      if (!queue) {
-        document.getElementById('queueList').innerHTML = "目前無待播歌曲";
-        return;
+      try {
+        await db.ref("ktv/state/" + queueType).push(song);
+        showToast(isPriority ? "🚀 已成功插播！" : "🎵 已加入排隊清單！");
+        document.getElementById("searchResults").textContent = "";
+        document.getElementById("searchInput").value = "";
+        document.getElementById("btnLoadMore").style.display = "none";
+      } catch (error) {
+        showToast("加入失敗，請稍後再試");
       }
-      const html = Object.keys(queue).map(key => `
-        <div class="queue-item">
-          <span>🎵 ${queue[key].title}</span>
-        </div>
-      `).join('');
-      document.getElementById('queueList').innerHTML = html;
+    }
+
+    /* --- Commands --- */
+    async function sendCommand(command) {
+      if (!currentUser) return showToast("尚未登入");
+      const allowed = ["pause", "play", "next", "toggleQR", "muteToggle", "volUp", "volDown"];
+      if (!allowed.includes(command)) return;
+
+      try {
+        await db.ref("ktv/commands").push({ action: command, timestamp: firebase.database.ServerValue.TIMESTAMP, uid: currentUser.uid });
+        showToast("📡 指令已送出");
+      } catch (error) {
+        showToast("指令發送失敗");
+      }
+    }
+
+    /* --- Rendering --- */
+    function renderNowPlaying(song) {
+      const section = document.getElementById("nowPlayingSection");
+      section.textContent = "";
+      if (!song) return section.appendChild(createEmptyMessage("尚無歌曲"));
+
+      const row = document.createElement("div"); row.className = "queue-item";
+      const info = document.createElement("div"); info.className = "item-info";
+      const title = document.createElement("span"); title.className = "now-title";
+      title.textContent = "▶️ " + song.title;
+      info.appendChild(title);
+
+      const nextButton = document.createElement("button"); nextButton.className = "del-btn"; nextButton.textContent = "強制切歌";
+      nextButton.addEventListener("click", () => sendCommand("next"));
+
+      row.append(info, nextButton);
+      section.appendChild(row);
+    }
+
+    function renderQueue(state) {
+      const list = document.getElementById("queueList");
+      list.textContent = "";
+      
+      const priority = state.priority || {};
+      const normal = state.normal || {};
+      const songs = [];
+
+      Object.keys(priority).forEach(key => songs.push({ key, type: "priority", ...priority[key] }));
+      Object.keys(normal).forEach(key => songs.push({ key, type: "normal", ...normal[key] }));
+
+      songs.sort((a, b) => {
+        if (a.type !== b.type) return a.type === "priority" ? -1 : 1;
+        return a.timestamp - b.timestamp;
+      });
+
+      if (songs.length === 0) return list.appendChild(createEmptyMessage("目前無待播歌曲"));
+
+      songs.forEach(song => {
+        const row = document.createElement("div"); row.className = "queue-item";
+        const info = document.createElement("div"); info.className = "item-info";
+        const title = document.createElement("span");
+        title.className = song.type === "priority" ? "priority-title" : "normal-title";
+        title.textContent = (song.type === "priority" ? "🚀 " : "🎵 ") + song.title;
+        info.appendChild(title);
+
+        if (currentUser && song.uid === currentUser.uid) {
+          const deleteButton = document.createElement("button");
+          deleteButton.className = "del-btn"; deleteButton.textContent = "刪除";
+          deleteButton.addEventListener("click", () => deleteQueueSong(song.type, song.key, song.uid));
+          row.append(info, deleteButton);
+        } else {
+          row.appendChild(info);
+        }
+        list.appendChild(row);
+      });
+    }
+
+    async function deleteQueueSong(type, key, uid) {
+      if (!currentUser || uid !== currentUser.uid) return showToast("不能刪除別人的歌曲");
+      try {
+        await db.ref("ktv/state/" + type + "/" + key).remove();
+        showToast("🗑️ 已刪除歌曲");
+      } catch (error) { showToast("刪除失敗"); }
+    }
+
+    function renderHistory(snapshot) {
+      const list = document.getElementById("historyList");
+      list.textContent = "";
+      if (!snapshot.exists()) return list.appendChild(createEmptyMessage("尚無紀錄"));
+
+      const history = [];
+      snapshot.forEach(child => { if (child.val()) history.push(child.val()); });
+      history.reverse();
+
+      if (history.length === 0) return list.appendChild(createEmptyMessage("尚無紀錄"));
+
+      history.forEach(song => {
+        const row = document.createElement("div"); row.className = "queue-item";
+        const info = document.createElement("div"); info.className = "item-info";
+        const title = document.createElement("span"); title.textContent = "🕒 " + song.title;
+        info.appendChild(title);
+
+        const replay = document.createElement("button"); replay.className = "add-btn"; replay.textContent = "再唱";
+        replay.addEventListener("click", () => addToQueue(song.videoId, song.title, false));
+
+        row.append(info, replay);
+        list.appendChild(row);
+      });
+    }
+
+    /* --- DB Listeners & UI Events --- */
+    let listenersStarted = false;
+    function startDatabaseListeners() {
+      if (listenersStarted) return;
+      listenersStarted = true;
+      db.ref("ktv/state/nowPlaying").on("value", snap => renderNowPlaying(snap.val()));
+      db.ref("ktv/state").on("value", snap => renderQueue(snap.val() || {}));
+      db.ref("ktv/history").orderByChild("playedAt").limitToLast(15).on("value", snap => renderHistory(snap));
+    }
+
+    document.getElementById("btnSearch").addEventListener("click", () => searchYT(false));
+    document.getElementById("searchInput").addEventListener("keydown", e => { if (e.key === "Enter") searchYT(false); });
+
+    document.getElementById("btnPause").addEventListener("click", () => sendCommand("pause"));
+    document.getElementById("btnPlay").addEventListener("click", () => sendCommand("play"));
+    document.getElementById("btnNext").addEventListener("click", () => sendCommand("next"));
+    document.getElementById("btnVolDown").addEventListener("click", () => sendCommand("volDown"));
+    document.getElementById("btnMute").addEventListener("click", () => sendCommand("muteToggle"));
+    document.getElementById("btnVolUp").addEventListener("click", () => sendCommand("volUp"));
+    document.getElementById("btnToggleQR").addEventListener("click", () => sendCommand("toggleQR"));
+
+    document.getElementById("btnToggleHistory").addEventListener("click", () => {
+      const box = document.getElementById("historyBox");
+      const visible = box.style.display === "block";
+      box.style.display = visible ? "none" : "block";
+      document.getElementById("btnToggleHistory").textContent = visible ? "📜 展開歷史點歌紀錄" : "📕 收起歷史點歌紀錄";
+      if (!visible) window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
     });
   </script>
 </body>
