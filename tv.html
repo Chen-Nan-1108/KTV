@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>KTV</title>
+  <title>KTV 電視播放端</title>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
@@ -99,12 +99,16 @@
       initListeners();
     };
 
-    // QR Code 顯示與隱藏切換函式
+    // 🛡️ 加入防抖鎖，防止按鍵連續觸發導致閃爍
+    let isTogglingQR = false;
     function toggleQR() {
+      if (isTogglingQR) return;
+      isTogglingQR = true;
+      setTimeout(() => { isTogglingQR = false; }, 300);
+
       const qr = document.getElementById("qrContainer");
       qr.classList.toggle("show");
       if (qr.classList.contains("show")) {
-        // 自動抓取主網址產生 QR Code
         const targetURL = window.location.origin + "/mobile.html";
         document.getElementById("qrImg").src = "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=" + encodeURIComponent(targetURL);
       }
@@ -199,7 +203,6 @@
       checkAndPlayNext();
     }
 
-    // 監聽手機端傳來的遙控指令（包含 toggleQR、next、pause 等）
     db.ref("ktv/commands").on("child_added", async snap => {
       const cmd = snap.val();
       if (!cmd) { snap.ref.remove(); return; }
@@ -214,9 +217,10 @@
       snap.ref.remove();
     });
 
-    // 鍵盤快捷鍵切換 QR Code
     window.addEventListener("keydown", e => {
+      if (e.repeat) return; // 防止鍵盤長按重複觸發
       if (e.key === "Enter" || e.key === "ArrowUp") {
+        e.preventDefault();
         toggleQR();
       }
     });
