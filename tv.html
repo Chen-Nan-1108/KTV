@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>KTV</title>
+  <title>KTV 電視播放端</title>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
@@ -73,7 +73,7 @@
     }).catch(err => {
       console.error(err);
       document.getElementById("connectionStatus").textContent = "● LOGIN ERROR";
-      document.getElementById("idleMessage").textContent = "登入失敗，請檢查密碼";
+      document.getElementById("idleMessage").textContent = "登入失敗";
     });
 
     let player;
@@ -85,19 +85,18 @@
         width: "100%", height: "100%",
         playerVars: { autoplay: 1, controls: 0, disablekb: 1, rel: 0 },
         events: {
-          onReady: () => { playerReady = true; checkQueueAndPlay(); },
+          onReady: () => { playerReady = true; checkAndPlayNext(); },
           onStateChange: e => { if (e.data === YT.PlayerState.ENDED) playNextSong(); }
         }
       });
       initListeners();
     };
 
-    // 監聽 Firebase 佇列與目前播放狀態
+    // 監聽手機端寫入的 ktv/state 結構
     function initListeners() {
-      db.ref("ktv").on("value", snap => {
-        const data = snap.val() || {};
-        const nowPlaying = data.nowPlaying;
-        const queue = data.queue || {};
+      db.ref("ktv/state").on("value", snap => {
+        const state = snap.val() || {};
+        const nowPlaying = state.nowPlaying;
         
         // 1. 處理目前播放
         if (nowPlaying) {
@@ -113,13 +112,12 @@
           document.getElementById("idleScreen").style.display = "flex";
           document.getElementById("nowPlaying").style.display = "none";
           currentVideoId = null;
-          // 如果目前沒歌播，但清單有歌，自動抓下一首
-          checkQueueAndPlay();
+          checkAndPlayNext();
         }
 
         // 2. 處理下一首預告
-        const priority = Object.values(queue.priority || {});
-        const normal = Object.values(queue.normal || {});
+        const priority = Object.values(state.priority || {});
+        const normal = Object.values(state.normal || {});
         priority.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
         normal.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
         
@@ -133,16 +131,16 @@
       });
     }
 
-    // 自動把清單第一首歌抓來播
-    async function checkQueueAndPlay() {
+    // 自動從 state 中抓取第一首歌來播
+    async function checkAndPlayNext() {
       if (!playerReady) return;
-      const snap = await db.ref("ktv/nowPlaying").once("value");
-      if (snap.exists()) return; // 正在播就跳過
+      const snap = await db.ref("ktv/state/nowPlaying").once("value");
+      if (snap.exists()) return;
 
-      const qSnap = await db.ref("ktv/queue").once("value");
-      const q = qSnap.val() || {};
-      const priority = q.priority || {};
-      const normal = q.normal || {};
+      const stateSnap = await db.ref("ktv/state").once("value");
+      const state = stateSnap.val() || {};
+      const priority = state.priority || {};
+      const normal = state.normal || {};
 
       let targetKey = null;
       let targetType = null;
@@ -163,26 +161,25 @@
       }
 
       if (targetSong) {
-        // 原子操作：設定為目前播放，並從清單中移除
         const updates = {};
-        updates["ktv/nowPlaying"] = targetSong;
-        updates[`ktv/queue/${targetType}/${targetKey}`] = null;
+        updates["ktv/state/nowPlaying"] = targetSong;
+        updates[`ktv/state/${targetType}/${targetKey}`] = null;
         await db.ref().update(updates);
       }
     }
 
     // 播完自動切歌
     async function playNextSong() {
-      const nowSnap = await db.ref("ktv/nowPlaying").once("value");
+      const nowSnap = await db.ref("ktv/state/nowPlaying").once("value");
       const current = nowSnap.val();
       if (current) {
         await db.ref("ktv/history").push({ ...current, playedAt: Date.now() });
       }
-      await db.ref("ktv/nowPlaying").remove();
-      checkQueueAndPlay();
+      await db.ref("ktv/state/nowPlaying").remove();
+      checkAndPlayNext();
     }
 
-    // 支援遙控指令（切歌、暫停等）
+    // 遙控指令
     db.ref("ktv/commands").on("child_added", async snap => {
       const cmd = snap.val();
       if (!cmd || !playerReady || !player) { snap.ref.remove(); return; }
