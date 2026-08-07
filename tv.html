@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>KTV 電視播放端</title>
+  <title>KTV</title>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
@@ -61,14 +61,15 @@
     const db = firebase.database();
     const auth = firebase.auth();
 
+    // 🎯 與手機端完全同步的強效純歌名過濾器
     function cleanSongTitle(title) {
       if (!title) return "未知歌曲";
       let t = String(title).trim();
-      t = t.replace(/[\(\（\[［「『【\{〈《].*?[\)\）\]］」』】\}〉》]/g, " ");
-      t = t.replace(/\/\/.*$/, "");
+      t = t.replace(/[\(\（\[［「『【\{〈《].*?[\)\）\]］」』】\}〉》]/g, ""); 
+      t = t.replace(/\/\/.*$/, ""); 
       const keywords = ["Official", "MV", "KTV", "伴奏", "動態歌詞", "繁體", "歌詞", "字幕", "高音質", "HD", "動畫", "主題曲", "專輯", "收錄在"];
-      keywords.forEach(kw => t = t.replace(new RegExp(kw, "gi"), " "));
-      return t.replace(/[-–—|/]+/g, " ").replace(/\s+/g, " ").trim();
+      keywords.forEach(kw => t = t.replace(new RegExp(kw, "gi"), ""));
+      return t.replace(/[-–—|/]+/g, " ").replace(/\s+/g, " ").trim() || String(title).trim();
     }
 
     auth.signInWithEmailAndPassword("tv@ktv.local", "14721472").then(() => {
@@ -99,7 +100,6 @@
       initListeners();
     };
 
-    // 🛡️ 加入防抖鎖，防止按鍵連續觸發導致閃爍
     let isTogglingQR = false;
     function toggleQR() {
       if (isTogglingQR) return;
@@ -218,7 +218,7 @@
     });
 
     window.addEventListener("keydown", e => {
-      if (e.repeat) return; // 防止鍵盤長按重複觸發
+      if (e.repeat) return;
       if (e.key === "Enter" || e.key === "ArrowUp") {
         e.preventDefault();
         toggleQR();
