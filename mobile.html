@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>KTV 智慧點歌台 V5 (語音翻頁版)</title>
+  <title>KTV 智慧點歌台 V6 (語音+熱門快捷專區)</title>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
@@ -17,10 +17,14 @@
     #searchInput { flex: 1; min-width: 0; padding: 14px; font-size: 16px; border: none; border-radius: 10px; background: #1e1e24; color: white; outline: none; }
     .btn-primary { background: linear-gradient(135deg, #ff2a5f, #ff758c); color: white; border: none; padding: 0 22px; border-radius: 10px; font-size: 16px; cursor: pointer; font-weight: bold; }
     
-    /* 語音與載入更多按鈕樣式 */
     .btn-voice { background: #2d2d38; color: white; border: 1px solid #3d3d48; padding: 0 15px; border-radius: 10px; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
     .btn-voice:active { background: #3d3d48; }
     .btn-load-more { width: 100%; background: #1e1e24; color: #00e676; border: 1px dashed #00e676; padding: 12px; border-radius: 10px; font-size: 15px; cursor: pointer; margin-top: 15px; display: none; font-weight: bold; }
+
+    /* 熱門快捷專區樣式 */
+    .shortcut-box { display: flex; gap: 6px; margin-bottom: 12px; overflow-x: auto; padding-bottom: 4px; }
+    .shortcut-btn { background: #1e1e24; color: #b2bec3; border: 1px solid #2d2d38; padding: 8px 12px; border-radius: 8px; font-size: 13px; cursor: pointer; white-space: nowrap; font-weight: 600; }
+    .shortcut-btn:active { background: #ff2a5f; color: white; border-color: #ff2a5f; }
 
     .filter-options { font-size: 13px; color: #b2bec3; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; }
     .filter-options input { accent-color: #ff2a5f; width: 16px; height: 16px; }
@@ -55,14 +59,6 @@
     #toast.show { visibility: visible; animation: fadein 0.4s, fadeout 0.4s 2.4s; }
     @keyframes fadein { from { bottom: 0; opacity: 0; } to { bottom: 30px; opacity: 1; } }
     @keyframes fadeout { from { bottom: 30px; opacity: 1; } to { bottom: 0; opacity: 0; } }
-    
-    @media (max-width: 480px) {
-      body { padding: 10px; }
-      .result-item { align-items: flex-start; }
-      .result-item img { width: 70px; height: 40px; }
-      .action-btns { flex-direction: column; }
-      .remote-ctrl button { flex: 1 1 calc(50% - 8px); }
-    }
   </style>
 </head>
 <body>
@@ -74,6 +70,15 @@
     <input type="text" id="searchInput" placeholder="輸入歌名或歌手" maxlength="100" autocomplete="off">
     <button class="btn-voice" id="btnVoice" title="語音搜尋">🎤</button>
     <button class="btn-primary" id="btnSearch">搜尋</button>
+  </div>
+
+  <!-- 熱門快捷專區 -->
+  <div class="shortcut-box">
+    <button class="shortcut-btn" onclick="searchKeyword('華語熱門流行音樂 歌詞')">🔥 華語熱門</button>
+    <button class="shortcut-btn" onclick="searchKeyword('西洋熱門流行音樂 歌詞')">🌍 西洋熱門</button>
+    <button class="shortcut-btn" onclick="searchKeyword('台語暢銷金曲 歌詞')">🎤 台語金曲</button>
+    <button class="shortcut-btn" onclick="searchKeyword('KPOP 夯曲 歌詞')">💎 K-POP</button>
+    <button class="shortcut-btn" onclick="searchKeyword('動漫熱門歌曲 歌詞')">⚡ 動漫熱門</button>
   </div>
 
   <div class="filter-options">
@@ -127,10 +132,8 @@
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     const auth = firebase.auth();
-
     const YT_API_KEY = "AIzaSyAqfIjspDncJP0FJa_n6XVXcb_VkPlinho";
 
-    /* --- Helpers --- */
     let toastTimer = null;
     function showToast(message) {
       const toast = document.getElementById("toast");
@@ -176,7 +179,6 @@
       }
     }
 
-    /* --- Authentication --- */
     let currentUser = null;
     auth.onAuthStateChanged(user => {
       currentUser = user || null;
@@ -194,9 +196,13 @@
       showToast("Firebase 登入失敗");
     });
 
-    /* --- YouTube Search (支援語音與翻頁) --- */
     let currentSearchQuery = "";
     let currentNextPageToken = "";
+
+    function searchKeyword(keyword) {
+      document.getElementById("searchInput").value = keyword.replace(" 歌詞", "");
+      searchYT(false);
+    }
 
     async function searchYT(isLoadMore = false) {
       const input = document.getElementById("searchInput");
@@ -288,7 +294,6 @@
       }
     }
 
-    /* --- 語音搜尋設定 --- */
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const btnVoice = document.getElementById("btnVoice");
     
@@ -304,9 +309,7 @@
           btnVoice.textContent = "🎙️";
           btnVoice.style.background = "#ff2a5f";
           showToast("請說出您想找的歌手或歌名...");
-        } catch (e) {
-          console.error(e);
-        }
+        } catch (e) { console.error(e); }
       });
 
       recognition.addEventListener("result", event => {
@@ -332,7 +335,6 @@
 
     document.getElementById("btnLoadMore").addEventListener("click", () => searchYT(true));
 
-    /* --- Add Queue --- */
     async function addToQueue(videoId, title, isPriority) {
       if (!currentUser) return showToast("尚未登入 Firebase");
       if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) return showToast("無效的影片");
@@ -351,21 +353,14 @@
       }
     }
 
-    /* --- Commands --- */
     async function sendCommand(command) {
       if (!currentUser) return showToast("尚未登入");
-      const allowed = ["pause", "play", "next", "toggleQR", "muteToggle", "volUp", "volDown"];
-      if (!allowed.includes(command)) return;
-
       try {
         await db.ref("ktv/commands").push({ action: command, timestamp: firebase.database.ServerValue.TIMESTAMP, uid: currentUser.uid });
         showToast("📡 指令已送出");
-      } catch (error) {
-        showToast("指令發送失敗");
-      }
+      } catch (error) { showToast("指令發送失敗"); }
     }
 
-    /* --- Rendering --- */
     function renderNowPlaying(song) {
       const section = document.getElementById("nowPlayingSection");
       section.textContent = "";
@@ -455,7 +450,6 @@
       });
     }
 
-    /* --- DB Listeners & UI Events --- */
     let listenersStarted = false;
     function startDatabaseListeners() {
       if (listenersStarted) return;
