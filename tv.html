@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>KTV</title>
+  <title>KTV TV 播放端 (精準純歌名版)</title>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
@@ -79,20 +79,31 @@
     let youtubeLoaded = false;
     let qrVisible = false;
 
-    // 🔥 升級版「暴力過濾」：把所有括號、書名號、專輯、歌詞、MV等雜訊全部切光光
+    // 🎯 終極精準純歌名過濾器
     function cleanTitle(title) {
-      return String(title || "")
-        .replace(/[\(\（\[［「『【\{〈《].*?[\)\）\]］」』】\}〉》]/g, "") // 刪除各種中英文括號及內部文字
-        .replace(/\/\/.*$/, "") // 刪除 // 後面的所有說明文字
-        .replace(/Official.*|MV|KTV|伴奏|動態歌詞|繁體|高音質|字幕|高清|畫質|HD|動畫|主題曲|專輯|收錄在/gi, "")
-        .replace(/[-–—|/]+/g, " ") // 把連字號或斜線轉成空白
-        .trim();
+      let t = String(title || "");
+      
+      // 1. 移除所有括號及其內容
+      t = t.replace(/[\(\（\[［「『【\{〈《].*?[\)\）\]］」』】\}〉》]/g, " ");
+      
+      // 2. 移除常見的冗長字眼
+      const keywords = ["Official", "MV", "KTV", "伴奏", "動態歌詞", "繁體", "歌詞", "高音質", "字幕", "高清", "畫質", "HD", "動畫", "主題曲", "專輯", "收錄在", "音樂"];
+      keywords.forEach(kw => {
+        const reg = new RegExp(kw, "gi");
+        t = t.replace(reg, " ");
+      });
+
+      // 3. 如果包含破折號或斜線，通常格式是「歌手 - 歌名」，我們嘗試取最後一段或乾淨部分
+      // 這裡直接把多餘符號清掉，只保留核心文字
+      t = t.replace(/[/\\|//–—]+/g, " ");
+      t = t.replace(/\s+/g, " ").trim();
+      
+      return t || title;
     }
 
     function setText(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; }
     function show(id, show) { const el = document.getElementById(id); if (el) el.style.display = show ? "block" : "none"; }
 
-    // 自動登入 TV 帳號
     auth.signInWithEmailAndPassword(TV_EMAIL, "14721472").then(() => {
       setText("idleMessage", "TV 已連線，等待歌曲...");
       document.getElementById("connectionStatus").textContent = "ONLINE";
@@ -139,7 +150,6 @@
         const state = snap.val() || {};
         const song = state.nowPlaying;
 
-        // 1. 處理正在播放畫面
         if (!song) {
           currentVideoId = null;
           show("idleScreen", true);
@@ -155,7 +165,6 @@
           }
         }
 
-        // 2. 處理下一首預告畫面
         const next = findNextSong(state);
         if (!next) {
           show("nextSong", false);
@@ -164,7 +173,6 @@
           setText("nextSongTitle", cleanTitle(next.song.title));
         }
 
-        // 3. 自動遞補：如果目前沒人在唱，但清單有歌，自動抓來播
         if (!song && next && playerReady) {
           playNextAtomic();
         }
