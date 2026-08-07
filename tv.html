@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>KTV TV 播放端 V5 (App自動登入版)</title>
+  <title>KTV TV 播放端 V6 (自動遞補版)</title>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
@@ -83,7 +83,6 @@
     let qrVisible = false;
     let transitionToken = null;
 
-    /* --- DOM Helpers --- */
     function setText(id, value) {
       const el = document.getElementById(id);
       if (el) el.textContent = value == null ? "" : String(value);
@@ -94,18 +93,15 @@
       if (el) el.style.display = displayValue;
     }
 
-    /* --- Authentication --- */
     async function loginTV() {
-      // ✅ 密碼已經為你修改為 14721472
       const pwd = "14721472"; 
-      
       try {
         await auth.signInWithEmailAndPassword(TV_EMAIL, pwd);
         setText("idleMessage", "TV 已連線，等待歌曲...");
         initTV();
       } catch (error) {
         console.error(error);
-        setText("idleMessage", "登入失敗，請確認程式碼中的密碼是否正確");
+        setText("idleMessage", "登入失敗，請確認密碼");
         updateConnectionStatus("LOGIN FAILED");
       }
     }
@@ -116,11 +112,10 @@
         initTV();
       } else {
         setText("idleMessage", "自動登入中...");
-        loginTV(); // 呼叫自動登入
+        loginTV();
       }
     });
 
-    /* --- YouTube API --- */
     function loadYouTubeAPI() {
       if (youtubeLoaded) return;
       youtubeLoaded = true;
@@ -140,7 +135,6 @@
       });
     };
 
-    /* --- State & Listeners --- */
     function updateConnectionStatus(text) { setText("connectionStatus", text); }
 
     function initTV() {
@@ -155,6 +149,11 @@
         const state = snap.val() || {};
         renderNowPlaying(state.nowPlaying || null);
         renderNextSong(state);
+
+        // 🔥 關鍵修復：如果目前沒有在播放，但待播清單有歌，自動遞補播放第一首！
+        if (!state.nowPlaying && playerReady) {
+          playNextAtomic("auto-pull");
+        }
       }, err => {
         console.error(err); updateConnectionStatus("DATABASE ERROR");
       });
@@ -177,24 +176,12 @@
     }
 
     function renderNextSong(state) {
-      const priority = state.priority || {};
-      const normal = state.normal || {};
-      const prioritySongs = Object.keys(priority).map(key => ({ key, type: "priority", ...priority[key] })).sort((a, b) => a.timestamp - b.timestamp);
-      
-      let next = null;
-      if (prioritySongs.length > 0) {
-        next = prioritySongs[0];
-      } else {
-        const normalSongs = Object.keys(normal).map(key => ({ key, type: "normal", ...normal[key] })).sort((a, b) => a.timestamp - b.timestamp);
-        if (normalSongs.length > 0) next = normalSongs[0];
-      }
-
+      const next = findNextSong(state);
       if (!next) return showElement("nextSong", "none");
       showElement("nextSong", "block");
-      setText("nextSongTitle", next.title);
+      setText("nextSongTitle", next.song.title);
     }
 
-    /* --- Transition & Atomic Updates --- */
     async function acquireTransitionLock() {
       const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
       const now = Date.now();
@@ -221,7 +208,7 @@
           if (current && current.token === token) return null;
           return current;
         }, undefined, false);
-      } catch (error) { console.error("Release lock error:", error); }
+      } catch (error) { console.error(error); }
     }
 
     function findNextSong(state) {
@@ -275,15 +262,16 @@
         const stateSnapshot = await db.ref("ktv/state").once("value");
         const state = stateSnapshot.val() || {};
         const current = state.nowPlaying;
-        if (!current) { await releaseTransitionLock(); return; }
 
         const next = findNextSong(state);
         const updates = {};
-        const historyKey = db.ref("ktv/history").push().key;
-
-        updates["ktv/history/" + historyKey] = {
-          videoId: current.videoId, title: current.title, playedAt: firebase.database.ServerValue.TIMESTAMP, uid: current.uid
-        };
+        
+        if (current) {
+          const historyKey = db.ref("ktv/history").push().key;
+          updates["ktv/history/" + historyKey] = {
+            videoId: current.videoId, title: current.title, playedAt: firebase.database.ServerValue.TIMESTAMP, uid: current.uid
+          };
+        }
 
         if (next) {
           updates["ktv/state/nowPlaying"] = next.song;
@@ -312,19 +300,14 @@
           return;
         }
         await playNextAtomic("startup");
-      } catch (error) { console.error("Recovery error:", error); }
+      } catch (error) { console.error(error); }
     }
 
     function onPlayerStateChange(event) {
       if (event.data !== YT.PlayerState.ENDED) return;
-      if (player && typeof player.getVideoData === "function") {
-        const data = player.getVideoData();
-        if (data && data.video_id && currentVideoId && data.video_id !== currentVideoId) return;
-      }
       cutSongAtomic("youtube-ended");
     }
 
-    /* --- Commands --- */
     function listenCommands() {
       db.ref("ktv/commands").on("child_added", async snap => {
         const command = snap.val();
@@ -332,7 +315,7 @@
         try {
           await executeCommand(command.action);
         } catch (error) {
-          console.error("Command error:", error);
+          console.error(error);
         } finally {
           await snap.ref.remove();
         }
@@ -352,7 +335,6 @@
       }
     }
 
-    /* --- QR Code --- */
     let qrLibraryLoaded = false;
     function loadQRLibrary(callback) {
       if (qrLibraryLoaded) return callback();
@@ -393,12 +375,10 @@
       });
     }
 
-    /* --- Keyboard Events --- */
     window.addEventListener("keydown", e => {
       if (e.key === "ArrowUp" || e.key === "Enter") toggleQR();
       if (e.key === "Escape" && qrVisible) toggleQR();
     });
-
   </script>
 </body>
 </html>
