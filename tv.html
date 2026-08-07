@@ -3,29 +3,57 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>KTV TV 播放端 (極簡版)</title>
+  <title>KTV TV 播放端 (極簡純淨版)</title>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
   <style>
-    html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: "Segoe UI", Arial, sans-serif; }
     #player { position: absolute; inset: 0; width: 100vw; height: 100vh; z-index: 1; pointer-events: none; }
     
+    #idleScreen { position: absolute; inset: 0; z-index: 10; display: flex; flex-direction: column; justify-content: center; align-items: center; background: radial-gradient(circle at 50% 30%, rgba(255, 42, 95, 0.2), transparent 35%), linear-gradient(135deg, #0f0c29, #302b63, #24243e); color: white; text-align: center; }
+    #idleScreen h1 { margin: 0 0 15px; font-size: clamp(32px, 5vw, 80px); text-shadow: 0 0 30px rgba(255, 42, 95, 0.7); }
+    #idleScreen p { margin: 0; color: #b2bec3; font-size: clamp(16px, 2vw, 30px); }
+    
     #infoPanel { position: absolute; top: 20px; left: 20px; z-index: 20; display: flex; flex-direction: column; gap: 8px; }
-    .card { padding: 8px 16px; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(5px); color: white; border-radius: 6px; min-width: 200px; max-width: 40vw; display: none; }
+    .card { padding: 8px 16px; background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(8px); color: white; border-radius: 6px; min-width: 220px; max-width: 45vw; display: none; }
     #nowPlaying { border-left: 4px solid #ff2a5f; }
     #nextSong { border-left: 4px solid #00e676; }
     .label { font-size: 10px; font-weight: bold; color: #888; margin-bottom: 2px; text-transform: uppercase; }
     .title { font-size: 18px; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    #connectionStatus { position: absolute; right: 20px; top: 20px; z-index: 50; color: #00e676; font-size: 10px; }
+    
+    #qrContainer { position: absolute; right: 40px; bottom: 40px; z-index: 30; display: none; flex-direction: column; align-items: center; padding: 15px; background: white; border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8); }
+    #qrCanvas { width: 180px; height: 180px; }
+    #qrText { margin-top: 10px; color: #111; font-weight: bold; font-size: 16px; }
+    
+    #connectionStatus { position: absolute; right: 20px; top: 20px; z-index: 50; padding: 5px 10px; background: rgba(0,0,0,0.6); border-radius: 15px; color: #00e676; font-size: 11px; }
   </style>
 </head>
 <body>
-  <div id="connectionStatus">ONLINE</div>
-  <div id="infoPanel">
-    <div id="nowPlaying" class="card"><div class="label">▶ 播放中</div><div class="title" id="nowPlayingTitle"></div></div>
-    <div id="nextSong" class="card"><div class="label">⏭ 下一首</div><div class="title" id="nextSongTitle"></div></div>
+
+  <div id="idleScreen">
+    <h1>🎤 頂級家庭 KTV</h1>
+    <p id="idleMessage">自動登入中...</p>
   </div>
+
+  <div id="connectionStatus">OFFLINE</div>
+
+  <div id="infoPanel">
+    <div id="nowPlaying" class="card">
+      <div class="label">▶ 播放中</div>
+      <div class="title" id="nowPlayingTitle"></div>
+    </div>
+    <div id="nextSong" class="card">
+      <div class="label">⏭ 下一首</div>
+      <div class="title" id="nextSongTitle"></div>
+    </div>
+  </div>
+
+  <div id="qrContainer">
+    <canvas id="qrCanvas" width="180" height="180"></canvas>
+    <div id="qrText">掃描立即點歌</div>
+  </div>
+
   <div id="player"></div>
 
   <script>
@@ -43,8 +71,15 @@
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     const auth = firebase.auth();
-    let player, playerReady = false, currentVideoId = null;
 
+    const TV_EMAIL = "tv@ktv.local";
+    let player = null;
+    let playerReady = false;
+    let currentVideoId = null;
+    let youtubeLoaded = false;
+    let qrVisible = false;
+
+    // 強效過濾標題：自動把雜訊、MV、高音質等字眼拿掉，只留乾淨歌名
     function cleanTitle(title) {
       return String(title || "")
         .replace(/【.*?】|\[.*?\]|\(.*?\)|（.*?）/g, "")
@@ -52,66 +87,93 @@
         .replace(/-+/g, "-").trim();
     }
 
-    auth.signInWithEmailAndPassword("tv@ktv.local", "14721472").then(() => {
+    function setText(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; }
+    function show(id, show) { const el = document.getElementById(id); if (el) el.style.display = show ? "block" : "none"; }
+
+    // 自動登入 TV 帳號
+    auth.signInWithEmailAndPassword(TV_EMAIL, "14721472").then(() => {
+      setText("idleMessage", "TV 已連線，等待歌曲...");
+      document.getElementById("connectionStatus").textContent = "ONLINE";
+      initTV();
+    }).catch(err => {
+      console.error(err);
+      setText("idleMessage", "登入失敗，請檢查密碼");
+      document.getElementById("connectionStatus").textContent = "LOGIN FAILED";
+    });
+
+    function initTV() {
+      if (youtubeLoaded) return;
+      youtubeLoaded = true;
       const script = document.createElement("script");
       script.src = "https://www.youtube.com/iframe_api";
       document.head.appendChild(script);
-    });
+    }
 
-    window.onYouTubeIframeAPIReady = () => {
+    window.onYouTubeIframeAPIReady = function() {
       player = new YT.Player("player", {
         width: "100%", height: "100%",
-        playerVars: { autoplay: 1, controls: 0, disablekb: 1, rel: 0 },
+        playerVars: { autoplay: 1, controls: 0, disablekb: 1, rel: 0, playsinline: 1 },
         events: {
-          onReady: () => { playerReady = true; },
-          onStateChange: (e) => { if (e.data === 0) cutSong(); }
+          onReady: () => { playerReady = true; recoverPlayback(); },
+          onStateChange: (e) => { if (e.data === YT.PlayerState.ENDED) cutSongAtomic(); }
         }
       });
       listenState();
+      listenCommands();
     };
+
+    function findNextSong(state) {
+      const priority = state.priority || {};
+      const normal = state.normal || {};
+      const pList = Object.keys(priority).map(k => ({ key: k, type: "priority", song: priority[k] })).sort((a,b) => a.song.timestamp - b.song.timestamp);
+      if (pList.length > 0) return pList[0];
+      const nList = Object.keys(normal).map(k => ({ key: k, type: "normal", song: normal[k] })).sort((a,b) => a.song.timestamp - b.song.timestamp);
+      if (nList.length > 0) return nList[0];
+      return null;
+    }
 
     function listenState() {
       db.ref("ktv/state").on("value", snap => {
         const state = snap.val() || {};
         const song = state.nowPlaying;
-        
-        // 更新顯示
+
+        // 1. 處理正在播放畫面
         if (!song) {
-          document.getElementById("nowPlaying").style.display = "none";
+          currentVideoId = null;
+          show("idleScreen", true);
+          show("nowPlaying", false);
+          if (playerReady && player && typeof player.stopVideo === "function") player.stopVideo();
         } else {
-          document.getElementById("nowPlaying").style.display = "block";
-          document.getElementById("nowPlayingTitle").textContent = cleanTitle(song.title);
-          if (playerReady && currentVideoId !== song.videoId) {
+          show("idleScreen", false);
+          show("nowPlaying", true);
+          setText("nowPlayingTitle", cleanTitle(song.title));
+          if (playerReady && player && currentVideoId !== song.videoId) {
             currentVideoId = song.videoId;
             player.loadVideoById(song.videoId);
           }
         }
 
-        // 下一首顯示
-        const next = findNext(state);
+        // 2. 處理下一首預告畫面
+        const next = findNextSong(state);
         if (!next) {
-          document.getElementById("nextSong").style.display = "none";
+          show("nextSong", false);
         } else {
-          document.getElementById("nextSong").style.display = "block";
-          document.getElementById("nextSongTitle").textContent = cleanTitle(next.song.title);
+          show("nextSong", true);
+          setText("nextSongTitle", cleanTitle(next.song.title));
         }
 
-        // 自動遞補
-        if (!song && next) playNextAtomic();
+        // 3. 自動遞補：如果目前沒人在唱，但清單有歌，自動抓來播
+        if (!song && next && playerReady) {
+          playNextAtomic();
+        }
       });
     }
 
-    function findNext(state) {
-      const p = state.priority || {}, n = state.normal || {};
-      const list = [...Object.keys(p).map(k=>({key:k,type:'priority',song:p[k]})), ...Object.keys(n).map(k=>({key:k,type:'normal',song:n[k]}))];
-      list.sort((a,b) => a.song.timestamp - b.song.timestamp);
-      return list[0] || null;
-    }
-
     async function playNextAtomic() {
-      const state = (await db.ref("ktv/state").once("value")).val() || {};
+      const snap = await db.ref("ktv/state").once("value");
+      const state = snap.val() || {};
       if (state.nowPlaying) return;
-      const next = findNext(state);
+      const next = findNextSong(state);
       if (next) {
         await db.ref().update({
           ["ktv/state/nowPlaying"]: next.song,
@@ -120,14 +182,85 @@
       }
     }
 
-    async function cutSong() {
-      const state = (await db.ref("ktv/state").once("value")).val() || {};
+    async function cutSongAtomic() {
+      const snap = await db.ref("ktv/state").once("value");
+      const state = snap.val() || {};
       const current = state.nowPlaying;
+      
+      const updates = {};
       if (current) {
-        await db.ref("ktv/history").push({ ...current, playedAt: firebase.database.ServerValue.TIMESTAMP });
+        const hKey = db.ref("ktv/history").push().key;
+        updates["ktv/history/" + hKey] = {
+          videoId: current.videoId, title: current.title, playedAt: firebase.database.ServerValue.TIMESTAMP, uid: current.uid
+        };
       }
-      await db.ref("ktv/state/nowPlaying").set(null);
-      playNextAtomic();
+      
+      const next = findNextSong(state);
+      if (next) {
+        updates["ktv/state/nowPlaying"] = next.song;
+        updates["ktv/state/" + next.type + "/" + next.key] = null;
+      } else {
+        updates["ktv/state/nowPlaying"] = null;
+      }
+      await db.ref().update(updates);
+    }
+
+    async function recoverPlayback() {
+      const snap = await db.ref("ktv/state").once("value");
+      const state = snap.val() || {};
+      if (state.nowPlaying) {
+        currentVideoId = state.nowPlaying.videoId;
+        player.loadVideoById(state.nowPlaying.videoId);
+      } else {
+        playNextAtomic();
+      }
+    }
+
+    function listenCommands() {
+      db.ref("ktv/commands").on("child_added", async snap => {
+        const cmd = snap.val();
+        if (!cmd) return;
+        try {
+          if (!playerReady || !player) return;
+          switch (cmd.action) {
+            case "pause": player.pauseVideo(); break;
+            case "play": player.playVideo(); break;
+            case "next": await cutSongAtomic(); break;
+            case "toggleQR": toggleQR(); break;
+            case "muteToggle": player.isMuted() ? player.unMute() : player.mute(); break;
+            case "volUp": player.setVolume(Math.min(player.getVolume() + 10, 100)); break;
+            case "volDown": player.setVolume(Math.max(player.getVolume() - 10, 0)); break;
+          }
+        } finally {
+          await snap.ref.remove();
+        }
+      });
+    }
+
+    let qrLibLoaded = false;
+    function toggleQR() {
+      qrVisible = !qrVisible;
+      show("qrContainer", qrVisible);
+      if (qrVisible && !qrLibLoaded) {
+        const s = document.createElement("script");
+        s.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
+        s.onload = () => { qrLibLoaded = true; drawQR(); };
+        document.head.appendChild(s);
+      } else if (qrVisible) {
+        drawQR();
+      }
+    }
+
+    function drawQR() {
+      const canvas = document.getElementById("qrCanvas");
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, 180, 180);
+      const tmp = document.createElement("div");
+      new QRCode(tmp, { text: window.location.origin + "/mobile.html", width: 180, height: 180 });
+      setTimeout(() => {
+        const img = tmp.querySelector("img");
+        if (img) ctx.drawImage(img, 0, 0, 180, 180);
+      }, 100);
     }
   </script>
 </body>
