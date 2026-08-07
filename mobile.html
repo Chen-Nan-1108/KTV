@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>KTV點歌台</title>
+  <title>KTV</title>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
@@ -211,7 +211,6 @@
       searchYT(false);
     }
 
-    // 綁定快捷按鈕事件
     document.querySelectorAll(".shortcut-btn").forEach(btn => {
       btn.addEventListener("click", () => {
         const query = btn.getAttribute("data-query");
@@ -449,9 +448,18 @@
       snapshot.forEach(child => { if (child.val()) history.push(child.val()); });
       history.reverse();
 
-      if (history.length === 0) return list.appendChild(createEmptyMessage("尚無紀錄"));
-
+      const seen = new Set();
+      const uniqueHistory = [];
       history.forEach(song => {
+        if (!seen.has(song.videoId)) {
+          seen.add(song.videoId);
+          uniqueHistory.push(song);
+        }
+      });
+
+      if (uniqueHistory.length === 0) return list.appendChild(createEmptyMessage("尚無紀錄"));
+
+      uniqueHistory.forEach(song => {
         const row = document.createElement("div"); row.className = "queue-item";
         const info = document.createElement("div"); info.className = "item-info";
         const title = document.createElement("span"); title.textContent = "🕒 " + song.title;
