@@ -3,275 +3,1611 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>KTV TV 播放端 (精準純歌名版)</title>
+  <title>KTV 電視播放端</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+      font-family: "Segoe UI", Arial, sans-serif;
+    }
+
+    /* =========================
+       YouTube 播放器
+    ========================= */
+
+    #player {
+      width: 100vw;
+      height: 100vh;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1;
+      border: 0;
+    }
+
+    /* =========================
+       待機畫面
+    ========================= */
+
+    #idleScreen {
+      position: absolute;
+      top: 0;
+      left: 0;
+
+      width: 100%;
+      height: 100%;
+
+      background:
+        radial-gradient(circle at center, #302b63 0%, #0f0c29 70%);
+
+      color: white;
+
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+
+      z-index: 10;
+
+      text-align: center;
+
+      transition: opacity 0.4s ease;
+    }
+
+    #idleScreen h1 {
+      font-size: 4vw;
+      margin: 0 0 15px 0;
+
+      text-shadow:
+        0 0 10px rgba(0, 255, 255, 0.5),
+        0 0 25px rgba(0, 255, 255, 0.3);
+    }
+
+    #idleScreen p {
+      font-size: 1.5vw;
+      color: #b2bec3;
+    }
+
+    /* =========================
+       左上角資訊
+    ========================= */
+
+    #infoPanel {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+
+      z-index: 20;
+
+      display: flex;
+      flex-direction: column;
+
+      gap: 8px;
+    }
+
+    .card {
+      padding: 8px 16px;
+
+      background: rgba(0, 0, 0, 0.7);
+
+      backdrop-filter: blur(5px);
+
+      color: white;
+
+      border-radius: 6px;
+
+      min-width: 200px;
+      max-width: 40vw;
+
+      display: none;
+    }
+
+    #nowPlaying {
+      border-left: 4px solid #ff2a5f;
+    }
+
+    #nextSong {
+      border-left: 4px solid #00e676;
+    }
+
+    .label {
+      font-size: 10px;
+
+      font-weight: bold;
+
+      color: #888;
+
+      margin-bottom: 2px;
+
+      text-transform: uppercase;
+    }
+
+    #nowPlaying .label {
+      color: #ff2a5f;
+    }
+
+    #nextSong .label {
+      color: #00e676;
+    }
+
+    .title {
+      font-size: 18px;
+
+      font-weight: bold;
+
+      white-space: nowrap;
+
+      overflow: hidden;
+
+      text-overflow: ellipsis;
+    }
+
+    /* =========================
+       連線狀態
+    ========================= */
+
+    #connectionStatus {
+      position: absolute;
+
+      right: 20px;
+      top: 20px;
+
+      z-index: 50;
+
+      color: #00e676;
+
+      font-size: 10px;
+
+      opacity: 0.8;
+    }
+
+    /* =========================
+       QR Code
+    ========================= */
+
+    #qrContainer {
+      position: absolute;
+
+      bottom: 40px;
+      right: 40px;
+
+      z-index: 100;
+
+      background: white;
+
+      padding: 15px;
+
+      border-radius: 12px;
+
+      box-shadow:
+        0 10px 30px rgba(0, 0, 0, 0.8);
+
+      display: none;
+
+      flex-direction: column;
+
+      align-items: center;
+
+      user-select: none;
+    }
+
+    #qrContainer img {
+      width: 150px;
+      height: 150px;
+
+      display: block;
+    }
+
+    #qrContainer .qr-text {
+      color: #000;
+
+      font-weight: bold;
+
+      margin-top: 10px;
+
+      font-size: 16px;
+
+      letter-spacing: 1px;
+    }
+
+    /* =========================
+       快捷鍵提示
+    ========================= */
+
+    #shortcutHint {
+      position: absolute;
+
+      bottom: 15px;
+      left: 50%;
+
+      transform: translateX(-50%);
+
+      z-index: 30;
+
+      color: rgba(255, 255, 255, 0.45);
+
+      font-size: 11px;
+
+      pointer-events: none;
+
+      transition: opacity 0.3s ease;
+    }
+
+    /* =========================
+       手機 / 小螢幕
+    ========================= */
+
+    @media (max-width: 768px) {
+
+      #infoPanel {
+        top: 10px;
+        left: 10px;
+      }
+
+      .card {
+        min-width: 150px;
+        max-width: 70vw;
+      }
+
+      .title {
+        font-size: 14px;
+      }
+
+      #qrContainer {
+        right: 20px;
+        bottom: 20px;
+      }
+
+      #shortcutHint {
+        display: none;
+      }
+    }
+  </style>
+
+  <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-  <style>
-    html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: "Segoe UI", Arial, sans-serif; }
-    #player { position: absolute; inset: 0; width: 100vw; height: 100vh; z-index: 1; pointer-events: none; }
-    
-    #idleScreen { position: absolute; inset: 0; z-index: 10; display: flex; flex-direction: column; justify-content: center; align-items: center; background: radial-gradient(circle at 50% 30%, rgba(255, 42, 95, 0.2), transparent 35%), linear-gradient(135deg, #0f0c29, #302b63, #24243e); color: white; text-align: center; }
-    #idleScreen h1 { margin: 0 0 15px; font-size: clamp(32px, 5vw, 80px); text-shadow: 0 0 30px rgba(255, 42, 95, 0.7); }
-    #idleScreen p { margin: 0; color: #b2bec3; font-size: clamp(16px, 2vw, 30px); }
-    
-    #infoPanel { position: absolute; top: 20px; left: 20px; z-index: 20; display: flex; flex-direction: column; gap: 8px; }
-    .card { padding: 8px 16px; background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(8px); color: white; border-radius: 6px; min-width: 220px; max-width: 45vw; display: none; }
-    #nowPlaying { border-left: 4px solid #ff2a5f; }
-    #nextSong { border-left: 4px solid #00e676; }
-    .label { font-size: 10px; font-weight: bold; color: #888; margin-bottom: 2px; text-transform: uppercase; }
-    .title { font-size: 18px; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    
-    #qrContainer { position: absolute; right: 40px; bottom: 40px; z-index: 30; display: none; flex-direction: column; align-items: center; padding: 15px; background: white; border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8); }
-    #qrCanvas { width: 180px; height: 180px; }
-    #qrText { margin-top: 10px; color: #111; font-weight: bold; font-size: 16px; }
-    
-    #connectionStatus { position: absolute; right: 20px; top: 20px; z-index: 50; padding: 5px 10px; background: rgba(0,0,0,0.6); border-radius: 15px; color: #00e676; font-size: 11px; }
-  </style>
 </head>
+
 <body>
 
+  <!-- =========================
+       待機畫面
+  ========================= -->
+
   <div id="idleScreen">
+
     <h1>🎤 頂級家庭 KTV</h1>
-    <p id="idleMessage">自動登入中...</p>
+
+    <p id="idleMessage">
+      系統連線中...
+    </p>
+
   </div>
 
-  <div id="connectionStatus">OFFLINE</div>
+
+  <!-- =========================
+       左上資訊
+  ========================= -->
 
   <div id="infoPanel">
+
     <div id="nowPlaying" class="card">
-      <div class="label">▶ 播放中</div>
-      <div class="title" id="nowPlayingTitle"></div>
+
+      <div class="label">
+        ▶ 正在播放
+      </div>
+
+      <div
+        class="title"
+        id="nowPlayingTitle"
+      >
+        載入中...
+      </div>
+
     </div>
+
+
     <div id="nextSong" class="card">
-      <div class="label">⏭ 下一首</div>
-      <div class="title" id="nextSongTitle"></div>
+
+      <div class="label">
+        ⏭ 下一首
+      </div>
+
+      <div
+        class="title"
+        id="nextSongTitle"
+      >
+        無
+      </div>
+
     </div>
+
   </div>
 
-  <div id="qrContainer">
-    <canvas id="qrCanvas" width="180" height="180"></canvas>
-    <div id="qrText">掃描立即點歌</div>
+
+  <!-- =========================
+       連線狀態
+  ========================= -->
+
+  <div id="connectionStatus">
+    ● CONNECTING
   </div>
+
+
+  <!-- =========================
+       QR Code
+  ========================= -->
+
+  <div id="qrContainer">
+
+    <img
+      src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://YOUR_VERCEL_URL"
+      alt="KTV 點歌 QR Code"
+    >
+
+    <div class="qr-text">
+      📱 掃描立即點歌
+    </div>
+
+  </div>
+
+
+  <!-- =========================
+       快捷鍵提示
+  ========================= -->
+
+  <div id="shortcutHint">
+    Enter / ↑　顯示・隱藏 QR Code
+  </div>
+
+
+  <!-- =========================
+       YouTube Player
+  ========================= -->
 
   <div id="player"></div>
 
+
   <script>
+
+    /* =========================================================
+       Firebase 設定
+    ========================================================= */
+
     const firebaseConfig = {
-      apiKey: "AIzaSyCBcNEQMbPobr00gzvEhYxeYmiuqXBmZF0",
-      authDomain: "realtime-database-69288.firebaseapp.com",
-      databaseURL: "https://realtime-database-69288-default-rtdb.firebaseio.com",
-      projectId: "realtime-database-69288",
-      storageBucket: "realtime-database-69288.firebasestorage.app",
-      messagingSenderId: "757099420036",
-      appId: "1:757099420036:web:4242dbf691bb93ec4de5d1",
-      measurementId: "G-4LLZ5HYQ1C"
+
+      apiKey: "請更換成你的_FIREBASE_API_KEY",
+
+      authDomain:
+        "realtime-database-69288.firebaseapp.com",
+
+      databaseURL:
+        "https://realtime-database-69288-default-rtdb.firebaseio.com",
+
+      projectId:
+        "realtime-database-69288",
+
+      storageBucket:
+        "realtime-database-69288.firebasestorage.app",
+
+      messagingSenderId:
+        "757099420036",
+
+      appId:
+        "1:757099420036:web:4242dbf691bb93ec4de5d1"
+
     };
 
-    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
-    const auth = firebase.auth();
 
-    const TV_EMAIL = "tv@ktv.local";
+    /* =========================================================
+       Firebase 初始化
+    ========================================================= */
+
+    if (!firebase.apps.length) {
+
+      firebase.initializeApp(firebaseConfig);
+
+    }
+
+    const db =
+      firebase.database();
+
+    const auth =
+      firebase.auth();
+
+
+    /* =========================================================
+       全域變數
+    ========================================================= */
+
     let player = null;
-    let playerReady = false;
+
     let currentVideoId = null;
-    let youtubeLoaded = false;
-    let qrVisible = false;
 
-    // 🎯 終極精準純歌名過濾器
-    function cleanTitle(title) {
-      let t = String(title || "");
-      
-      // 1. 移除所有括號及其內容
-      t = t.replace(/[\(\（\[［「『【\{〈《].*?[\)\）\]］」』】\}〉》]/g, " ");
-      
-      // 2. 移除常見的冗長字眼
-      const keywords = ["Official", "MV", "KTV", "伴奏", "動態歌詞", "繁體", "歌詞", "高音質", "字幕", "高清", "畫質", "HD", "動畫", "主題曲", "專輯", "收錄在", "音樂"];
-      keywords.forEach(kw => {
-        const reg = new RegExp(kw, "gi");
-        t = t.replace(reg, " ");
-      });
+    let isTransitioning = false;
 
-      // 3. 如果包含破折號或斜線，通常格式是「歌手 - 歌名」，我們嘗試取最後一段或乾淨部分
-      // 這裡直接把多餘符號清掉，只保留核心文字
-      t = t.replace(/[/\\|//–—]+/g, " ");
-      t = t.replace(/\s+/g, " ").trim();
-      
-      return t || title;
+    let playerReady = false;
+
+    let tvInitialized = false;
+
+
+    /* =========================================================
+       DOM
+    ========================================================= */
+
+    const idleScreen =
+      document.getElementById("idleScreen");
+
+    const idleMessage =
+      document.getElementById("idleMessage");
+
+    const nowPlayingCard =
+      document.getElementById("nowPlaying");
+
+    const nextSongCard =
+      document.getElementById("nextSong");
+
+    const qrContainer =
+      document.getElementById("qrContainer");
+
+    const connectionStatus =
+      document.getElementById("connectionStatus");
+
+
+    /* =========================================================
+       歌名清理
+       
+       這裡是這次最重要的修改
+    ========================================================= */
+
+    function cleanSongTitle(title) {
+
+      if (!title) {
+        return "未知歌曲";
+      }
+
+      let result = String(title).trim();
+
+
+      /*
+       * 移除：
+       *
+       * 【官方MV】
+       * 【Official Video】
+       * [Official MV]
+       * (Official Video)
+       * （Official MV）
+       */
+
+      result = result.replace(
+        /【[^】]*】/g,
+        ""
+      );
+
+      result = result.replace(
+        /\[[^\]]*\]/g,
+        ""
+      );
+
+      result = result.replace(
+        /\([^)]*\)/g,
+        ""
+      );
+
+      result = result.replace(
+        /（[^）]*）/g,
+        ""
+      );
+
+
+      /*
+       * 移除常見 YouTube 後綴
+       */
+
+      result = result.replace(
+        /\bOfficial\s+Music\s+Video\b/gi,
+        ""
+      );
+
+      result = result.replace(
+        /\bOfficial\s+Video\b/gi,
+        ""
+      );
+
+      result = result.replace(
+        /\bOfficial\s+MV\b/gi,
+        ""
+      );
+
+      result = result.replace(
+        /\bMusic\s+Video\b/gi,
+        ""
+      );
+
+      result = result.replace(
+        /\bOfficial\b/gi,
+        ""
+      );
+
+      result = result.replace(
+        /\bMV\b/gi,
+        ""
+      );
+
+      result = result.replace(
+        /\bKTV伴奏\b/gi,
+        ""
+      );
+
+      result = result.replace(
+        /\bKTV版\b/gi,
+        ""
+      );
+
+      result = result.replace(
+        /\bKTV\b/gi,
+        ""
+      );
+
+      result = result.replace(
+        /\b動態歌詞\b/gi,
+        ""
+      );
+
+      result = result.replace(
+        /\b歌詞版\b/gi,
+        ""
+      );
+
+      result = result.replace(
+        /\bLyrics?\b/gi,
+        ""
+      );
+
+      result = result.replace(
+        /\b字幕\b/gi,
+        ""
+      );
+
+      result = result.replace(
+        /\b繁體中文\b/gi,
+        ""
+      );
+
+      result = result.replace(
+        /\b繁體\b/gi,
+        ""
+      );
+
+      result = result.replace(
+        /\b中文字幕\b/gi,
+        ""
+      );
+
+      result = result.replace(
+        /\b高音質\b/gi,
+        ""
+      );
+
+      result = result.replace(
+        /\bHD\b/gi,
+        ""
+      );
+
+      result = result.replace(
+        /\b4K\b/gi,
+        ""
+      );
+
+
+      /*
+       * YouTube 很常出現：
+       *
+       * 歌名｜官方頻道｜高音質
+       *
+       * 後面全部砍掉
+       */
+
+      if (result.includes("｜")) {
+
+        result =
+          result.split("｜")[0];
+
+      }
+
+      /*
+       * 半形 | 也處理
+       */
+
+      if (result.includes("|")) {
+
+        result =
+          result.split("|")[0];
+
+      }
+
+
+      /*
+       * 多餘空白
+       */
+
+      result =
+        result.replace(/\s+/g, " ").trim();
+
+
+      /*
+       * 清掉最後的 -
+       * 例如：
+       * 周杰倫 - 晴天 -
+       */
+
+      result =
+        result.replace(
+          /[\s\-–—:：]+$/,
+          ""
+        ).trim();
+
+
+      return result || String(title).trim();
+
     }
 
-    function setText(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; }
-    function show(id, show) { const el = document.getElementById(id); if (el) el.style.display = show ? "block" : "none"; }
 
-    auth.signInWithEmailAndPassword(TV_EMAIL, "14721472").then(() => {
-      setText("idleMessage", "TV 已連線，等待歌曲...");
-      document.getElementById("connectionStatus").textContent = "ONLINE";
-      initTV();
-    }).catch(err => {
-      console.error(err);
-      setText("idleMessage", "登入失敗，請檢查密碼");
-      document.getElementById("connectionStatus").textContent = "LOGIN FAILED";
-    });
+    /* =========================================================
+       安全顯示文字
+    ========================================================= */
 
-    function initTV() {
-      if (youtubeLoaded) return;
-      youtubeLoaded = true;
-      const script = document.createElement("script");
-      script.src = "https://www.youtube.com/iframe_api";
-      document.head.appendChild(script);
+    function setSafeText(elementId, text) {
+
+      const element =
+        document.getElementById(elementId);
+
+      if (!element) return;
+
+      element.textContent =
+        cleanSongTitle(text);
+
     }
 
-    window.onYouTubeIframeAPIReady = function() {
-      player = new YT.Player("player", {
-        width: "100%", height: "100%",
-        playerVars: { autoplay: 1, controls: 0, disablekb: 1, rel: 0, playsinline: 1 },
-        events: {
-          onReady: () => { playerReady = true; recoverPlayback(); },
-          onStateChange: (e) => { if (e.data === YT.PlayerState.ENDED) cutSongAtomic(); }
+
+    /* =========================================================
+       QR Code 開關
+       
+       重點：
+       每次呼叫一定反轉狀態
+    ========================================================= */
+
+    function toggleQR() {
+
+      if (!qrContainer) return;
+
+      const isOpen =
+        qrContainer.style.display === "flex";
+
+      if (isOpen) {
+
+        qrContainer.style.display =
+          "none";
+
+      } else {
+
+        qrContainer.style.display =
+          "flex";
+
+      }
+
+    }
+
+
+    /* =========================================================
+       Firebase TV 登入
+    ========================================================= */
+
+    function authenticateTV() {
+
+      const email =
+        "tv@ktv.local";
+
+
+      let savedPassword =
+        localStorage.getItem("tv_pwd");
+
+
+      /*
+       * 第一次使用
+       */
+
+      if (!savedPassword) {
+
+        savedPassword =
+          prompt(
+            "請輸入 TV 端管理員密碼："
+          );
+
+
+        if (!savedPassword) {
+
+          idleMessage.textContent =
+            "等待 TV 管理員登入...";
+
+          return;
+
         }
-      });
-      listenState();
-      listenCommands();
-    };
 
-    function findNextSong(state) {
-      const priority = state.priority || {};
-      const normal = state.normal || {};
-      const pList = Object.keys(priority).map(k => ({ key: k, type: "priority", song: priority[k] })).sort((a,b) => a.song.timestamp - b.song.timestamp);
-      if (pList.length > 0) return pList[0];
-      const nList = Object.keys(normal).map(k => ({ key: k, type: "normal", song: normal[k] })).sort((a,b) => a.song.timestamp - b.song.timestamp);
-      if (nList.length > 0) return nList[0];
-      return null;
+        localStorage.setItem(
+          "tv_pwd",
+          savedPassword
+        );
+
+      }
+
+
+      auth
+        .signInWithEmailAndPassword(
+          email,
+          savedPassword
+        )
+
+        .then(() => {
+
+          idleMessage.textContent =
+            "系統已連線，等待點歌...";
+
+          connectionStatus.textContent =
+            "● ONLINE";
+
+          connectionStatus.style.color =
+            "#00e676";
+
+
+          initYouTubeAPI();
+
+          initTVApp();
+
+        })
+
+        .catch(error => {
+
+          console.error(
+            "TV Login Error:",
+            error
+          );
+
+
+          localStorage.removeItem(
+            "tv_pwd"
+          );
+
+
+          alert(
+            "TV 登入失敗，請重新輸入密碼。"
+          );
+
+
+          window.location.reload();
+
+        });
+
     }
 
-    function listenState() {
-      db.ref("ktv/state").on("value", snap => {
-        const state = snap.val() || {};
-        const song = state.nowPlaying;
+
+    /* =========================================================
+       Firebase 連線監控
+    ========================================================= */
+
+    db.ref(".info/connected")
+      .on("value", snap => {
+
+        if (snap.val() === true) {
+
+          connectionStatus.textContent =
+            "● ONLINE";
+
+          connectionStatus.style.color =
+            "#00e676";
+
+        } else {
+
+          connectionStatus.textContent =
+            "● OFFLINE";
+
+          connectionStatus.style.color =
+            "#ff3b30";
+
+        }
+
+      });
+
+
+    /* =========================================================
+       載入 YouTube API
+    ========================================================= */
+
+    function initYouTubeAPI() {
+
+      if (
+        document.querySelector(
+          'script[src="https://www.youtube.com/iframe_api"]'
+        )
+      ) {
+
+        return;
+
+      }
+
+
+      const script =
+        document.createElement("script");
+
+      script.src =
+        "https://www.youtube.com/iframe_api";
+
+      document.head.appendChild(
+        script
+      );
+
+    }
+
+
+    /* =========================================================
+       YouTube API Ready
+    ========================================================= */
+
+    function onYouTubeIframeAPIReady() {
+
+      player =
+        new YT.Player(
+          "player",
+          {
+
+            width: "100%",
+
+            height: "100%",
+
+            playerVars: {
+
+              autoplay: 1,
+
+              controls: 0,
+
+              disablekb: 1,
+
+              rel: 0,
+
+              modestbranding: 1,
+
+              playsinline: 1,
+
+              hl: "zh-Hant"
+
+            },
+
+            events: {
+
+              onReady:
+                onPlayerReady,
+
+              onStateChange:
+                onPlayerStateChange,
+
+              onError:
+                onPlayerError
+
+            }
+
+          }
+        );
+
+    }
+
+
+    /* =========================================================
+       Player Ready
+    ========================================================= */
+
+    function onPlayerReady() {
+
+      playerReady = true;
+
+      window.playerReady = true;
+
+      console.log(
+        "YouTube Player Ready"
+      );
+
+
+      checkAndPlayNextAtomic();
+
+    }
+
+
+    /* =========================================================
+       YouTube Error
+    ========================================================= */
+
+    function onPlayerError(event) {
+
+      console.error(
+        "YouTube Error:",
+        event.data
+      );
+
+    }
+
+
+    /* =========================================================
+       初始化 TV
+    ========================================================= */
+
+    function initTVApp() {
+
+      if (tvInitialized) {
+
+        return;
+
+      }
+
+      tvInitialized = true;
+
+
+      /* -----------------------------------------
+         目前播放
+      ----------------------------------------- */
+
+      db.ref("ktv/nowPlaying")
+        .on("value", snap => {
+
+          const data =
+            snap.val();
+
+
+          if (data) {
+
+            idleScreen.style.display =
+              "none";
+
+            nowPlayingCard.style.display =
+              "block";
+
+
+            setSafeText(
+              "nowPlayingTitle",
+              data.title
+            );
+
+
+            /*
+             * 如果歌曲不同
+             * 才載入新歌曲
+             */
+
+            if (
+              currentVideoId !==
+                data.videoId &&
+              playerReady &&
+              player
+            ) {
+
+              currentVideoId =
+                data.videoId;
+
+
+              player.loadVideoById(
+                data.videoId
+              );
+
+            }
+
+          } else {
+
+            currentVideoId = null;
+
+
+            if (
+              playerReady &&
+              player
+            ) {
+
+              player.stopVideo();
+
+            }
+
+
+            idleScreen.style.display =
+              "flex";
+
+            nowPlayingCard.style.display =
+              "none";
+
+          }
+
+        });
+
+
+      /* -----------------------------------------
+         待播清單
+      ----------------------------------------- */
+
+      db.ref("ktv/queue")
+        .on("value", snap => {
+
+          const q =
+            snap.val() || {};
+
+          const priority =
+            q.priority || {};
+
+          const normal =
+            q.normal || {};
+
+
+          let prioritySongs =
+            Object.values(priority);
+
+
+          let normalSongs =
+            Object.values(normal);
+
+
+          prioritySongs.sort(
+            (a, b) =>
+              Number(a.timestamp || 0) -
+              Number(b.timestamp || 0)
+          );
+
+
+          normalSongs.sort(
+            (a, b) =>
+              Number(a.timestamp || 0) -
+              Number(b.timestamp || 0)
+          );
+
+
+          let nextSong = null;
+
+
+          if (
+            prioritySongs.length > 0
+          ) {
+
+            nextSong =
+              prioritySongs[0];
+
+          } else if (
+            normalSongs.length > 0
+          ) {
+
+            nextSong =
+              normalSongs[0];
+
+          }
+
+
+          if (nextSong) {
+
+            nextSongCard.style.display =
+              "block";
+
+
+            setSafeText(
+              "nextSongTitle",
+              nextSong.title
+            );
+
+          } else {
+
+            nextSongCard.style.display =
+              "none";
+
+          }
+
+        });
+
+
+      /* -----------------------------------------
+         遙控指令
+      ----------------------------------------- */
+
+      db.ref("ktv/commands")
+        .on("child_added", snap => {
+
+          const command =
+            snap.val();
+
+          if (!command) {
+
+            snap.ref.remove();
+
+            return;
+
+          }
+
+
+          const action =
+            command.action;
+
+
+          if (
+            !playerReady ||
+            !player
+          ) {
+
+            snap.ref.remove();
+
+            return;
+
+          }
+
+
+          switch (action) {
+
+            case "pause":
+
+              player.pauseVideo();
+
+              break;
+
+
+            case "play":
+
+              player.playVideo();
+
+              break;
+
+
+            case "next":
+
+              forceCutSongAtomic();
+
+              break;
+
+
+            case "toggleQR":
+
+              toggleQR();
+
+              break;
+
+
+            case "muteToggle":
+
+              if (
+                player.isMuted()
+              ) {
+
+                player.unMute();
+
+              } else {
+
+                player.mute();
+
+              }
+
+              break;
+
+
+            case "volUp": {
+
+              const volume =
+                player.getVolume();
+
+              player.setVolume(
+                Math.min(
+                  volume + 10,
+                  100
+                )
+              );
+
+              break;
+
+            }
+
+
+            case "volDown": {
+
+              const volume =
+                player.getVolume();
+
+              player.setVolume(
+                Math.max(
+                  volume - 10,
+                  0
+                )
+              );
+
+              break;
+
+            }
+
+          }
+
+
+          /*
+           * 指令執行完立即刪除
+           */
+
+          snap.ref.remove();
+
+        });
+
+    }
+
+
+    /* =========================================================
+       播放下一首
+    ========================================================= */
+
+    async function checkAndPlayNextAtomic() {
+
+      if (isTransitioning) {
+
+        return;
+
+      }
+
+
+      isTransitioning = true;
+
+
+      try {
+
+        /*
+         * 先確認現在是否正在播放
+         */
+
+        const nowSnap =
+          await db
+            .ref("ktv/nowPlaying")
+            .once("value");
+
+
+        if (nowSnap.exists()) {
+
+          return;
+
+        }
+
+
+        let nextSong =
+          null;
+
+
+        /*
+         * Priority
+         */
+
+        await db
+          .ref("ktv/queue/priority")
+          .transaction(
+            queueData => {
+
+              if (!queueData) {
+
+                return queueData;
+
+              }
+
+
+              const keys =
+                Object.keys(
+                  queueData
+                );
+
+
+              keys.sort(
+                (a, b) =>
+                  Number(
+                    queueData[a].timestamp || 0
+                  ) -
+                  Number(
+                    queueData[b].timestamp || 0
+                  )
+              );
+
+
+              if (
+                keys.length === 0
+              ) {
+
+                return queueData;
+
+              }
+
+
+              const key =
+                keys[0];
+
+
+              nextSong =
+                queueData[key];
+
+
+              delete queueData[key];
+
+
+              return queueData;
+
+            }
+          );
+
+
+        /*
+         * Normal
+         */
+
+        if (!nextSong) {
+
+          await db
+            .ref("ktv/queue/normal")
+            .transaction(
+              queueData => {
+
+                if (!queueData) {
+
+                  return queueData;
+
+                }
+
+
+                const keys =
+                  Object.keys(
+                    queueData
+                  );
+
+
+                keys.sort(
+                  (a, b) =>
+                    Number(
+                      queueData[a].timestamp || 0
+                    ) -
+                    Number(
+                      queueData[b].timestamp || 0
+                    )
+                );
+
+
+                if (
+                  keys.length === 0
+                ) {
+
+                  return queueData;
+
+                }
+
+
+                const key =
+                  keys[0];
+
+
+                nextSong =
+                  queueData[key];
+
+
+                delete queueData[key];
+
+
+                return queueData;
+
+              }
+            );
+
+        }
+
+
+        /*
+         * 寫入現在播放
+         */
+
+        if (nextSong) {
+
+          await db
+            .ref("ktv/nowPlaying")
+            .set(nextSong);
+
+        }
+
+      } catch (error) {
+
+        console.error(
+          "Play Next Error:",
+          error
+        );
+
+      } finally {
+
+        isTransitioning = false;
+
+      }
+
+    }
+
+
+    /* =========================================================
+       強制切歌
+    ========================================================= */
+
+    async function forceCutSongAtomic() {
+
+      if (isTransitioning) {
+
+        return;
+
+      }
+
+
+      isTransitioning = true;
+
+
+      try {
+
+        const nowRef =
+          db.ref(
+            "ktv/nowPlaying"
+          );
+
+
+        const snap =
+          await nowRef.once(
+            "value"
+          );
+
+
+        const song =
+          snap.val();
+
 
         if (!song) {
-          currentVideoId = null;
-          show("idleScreen", true);
-          show("nowPlaying", false);
-          if (playerReady && player && typeof player.stopVideo === "function") player.stopVideo();
-        } else {
-          show("idleScreen", false);
-          show("nowPlaying", true);
-          setText("nowPlayingTitle", cleanTitle(song.title));
-          if (playerReady && player && currentVideoId !== song.videoId) {
-            currentVideoId = song.videoId;
-            player.loadVideoById(song.videoId);
-          }
+
+          return;
+
         }
 
-        const next = findNextSong(state);
-        if (!next) {
-          show("nextSong", false);
-        } else {
-          show("nextSong", true);
-          setText("nextSongTitle", cleanTitle(next.song.title));
+
+        /*
+         * 寫入歷史
+         */
+
+        await db
+          .ref("ktv/history")
+          .push({
+
+            ...song,
+
+            playedAt:
+              Date.now()
+
+          });
+
+
+        /*
+         * 清除目前歌曲
+         */
+
+        await nowRef.remove();
+
+
+      } catch (error) {
+
+        console.error(
+          "Cut Song Error:",
+          error
+        );
+
+      } finally {
+
+        isTransitioning = false;
+
+
+        /*
+         * 等 Firebase 狀態更新後
+         * 播放下一首
+         */
+
+        setTimeout(
+          () => {
+
+            checkAndPlayNextAtomic();
+
+          },
+          100
+        );
+
+      }
+
+    }
+
+
+    /* =========================================================
+       YouTube 播放狀態
+    ========================================================= */
+
+    function onPlayerStateChange(event) {
+
+      /*
+       * 影片自然播完
+       */
+
+      if (
+        event.data ===
+        YT.PlayerState.ENDED
+      ) {
+
+        forceCutSongAtomic();
+
+      }
+
+    }
+
+
+    /* =========================================================
+       鍵盤快捷鍵
+       
+       這裡修正你現在「開得起來但關不起來」的問題
+    ========================================================= */
+
+    window.addEventListener(
+      "keydown",
+      function(event) {
+
+        /*
+         * 長按不重複觸發
+         */
+
+        if (event.repeat) {
+
+          return;
+
         }
 
-        if (!song && next && playerReady) {
-          playNextAtomic();
+
+        /*
+         * Enter 或 ArrowUp
+         */
+
+        if (
+          event.key === "Enter" ||
+          event.key === "ArrowUp"
+        ) {
+
+          /*
+           * 不讓瀏覽器做預設動作
+           */
+
+          event.preventDefault();
+
+
+          /*
+           * 直接切換 QR
+           */
+
+          toggleQR();
+
         }
-      });
-    }
 
-    async function playNextAtomic() {
-      const snap = await db.ref("ktv/state").once("value");
-      const state = snap.val() || {};
-      if (state.nowPlaying) return;
-      const next = findNextSong(state);
-      if (next) {
-        await db.ref().update({
-          ["ktv/state/nowPlaying"]: next.song,
-          ["ktv/state/" + next.type + "/" + next.key]: null
-        });
-      }
-    }
+      },
+      true
+    );
 
-    async function cutSongAtomic() {
-      const snap = await db.ref("ktv/state").once("value");
-      const state = snap.val() || {};
-      const current = state.nowPlaying;
-      
-      const updates = {};
-      if (current) {
-        const hKey = db.ref("ktv/history").push().key;
-        updates["ktv/history/" + hKey] = {
-          videoId: current.videoId, title: current.title, playedAt: firebase.database.ServerValue.TIMESTAMP, uid: current.uid
-        };
-      }
-      
-      const next = findNextSong(state);
-      if (next) {
-        updates["ktv/state/nowPlaying"] = next.song;
-        updates["ktv/state/" + next.type + "/" + next.key] = null;
-      } else {
-        updates["ktv/state/nowPlaying"] = null;
-      }
-      await db.ref().update(updates);
-    }
 
-    async function recoverPlayback() {
-      const snap = await db.ref("ktv/state").once("value");
-      const state = snap.val() || {};
-      if (state.nowPlaying) {
-        currentVideoId = state.nowPlaying.videoId;
-        player.loadVideoById(state.nowPlaying.videoId);
-      } else {
-        playNextAtomic();
-      }
-    }
+    /* =========================================================
+       啟動 TV
+    ========================================================= */
 
-    function listenCommands() {
-      db.ref("ktv/commands").on("child_added", async snap => {
-        const cmd = snap.val();
-        if (!cmd) return;
-        try {
-          if (!playerReady || !player) return;
-          switch (cmd.action) {
-            case "pause": player.pauseVideo(); break;
-            case "play": player.playVideo(); break;
-            case "next": await cutSongAtomic(); break;
-            case "toggleQR": toggleQR(); break;
-            case "muteToggle": player.isMuted() ? player.unMute() : player.mute(); break;
-            case "volUp": player.setVolume(Math.min(player.getVolume() + 10, 100)); break;
-            case "volDown": player.setVolume(Math.max(player.getVolume() - 10, 0)); break;
-          }
-        } finally {
-          await snap.ref.remove();
-        }
-      });
-    }
+    authenticateTV();
 
-    let qrLibLoaded = false;
-    function toggleQR() {
-      qrVisible = !qrVisible;
-      show("qrContainer", qrVisible);
-      if (qrVisible && !qrLibLoaded) {
-        const s = document.createElement("script");
-        s.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
-        s.onload = () => { qrLibLoaded = true; drawQR(); };
-        document.head.appendChild(s);
-      } else if (qrVisible) {
-        drawQR();
-      }
-    }
-
-    function drawQR() {
-      const canvas = document.getElementById("qrCanvas");
-      const ctx = canvas.getContext("2d");
-      ctx.clearRect(0, 0, 180, 180);
-      const tmp = document.createElement("div");
-      new QRCode(tmp, { text: window.location.origin + "/mobile.html", width: 180, height: 180 });
-      setTimeout(() => {
-        const img = tmp.querySelector("img");
-        if (img) ctx.drawImage(img, 0, 0, 180, 180);
-      }, 100);
-    }
   </script>
+
 </body>
 </html>
