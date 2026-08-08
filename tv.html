@@ -44,7 +44,7 @@
   </div>
 
   <div id="player"></div>
-  <div id="shortcutHint">ENTER / ↑ 顯示／隱藏 QR Code</div>
+  <div id="shortcutHint">ENTER / ↑　顯示／隱藏 QR Code</div>
 
   <script>
     const firebaseConfig = {
@@ -61,7 +61,6 @@
     const db = firebase.database();
     const auth = firebase.auth();
 
-    // 🎯 與手機端完全同步的強效純歌名過濾器
     function cleanSongTitle(title) {
       if (!title) return "未知歌曲";
       let t = String(title).trim();
@@ -75,6 +74,10 @@
     auth.signInWithEmailAndPassword("tv@ktv.local", "14721472").then(() => {
       document.getElementById("connectionStatus").textContent = "● ONLINE";
       document.getElementById("idleMessage").textContent = "TV 已連線，等待點歌...";
+      
+      // 🧹 殺手鐧：開機直接清空所有歷史幽靈指令，確保通道乾淨暢通！
+      db.ref("ktv/commands").remove().catch(() => {});
+
       const script = document.createElement("script");
       script.src = "https://www.youtube.com/iframe_api";
       document.head.appendChild(script);
@@ -196,25 +199,60 @@
       if (current) {
         await db.ref("ktv/history").push({ ...current, playedAt: Date.now() });
       }
-      if (playerReady && player) {
+      if (playerReady && player && typeof player.stopVideo === "function") {
         player.stopVideo();
       }
       await db.ref("ktv/state/nowPlaying").remove();
       checkAndPlayNext();
     }
 
+    // 🎯 究極防呆遙控器接收端：保證不管發生什麼錯誤都不會死機
     db.ref("ktv/commands").on("child_added", async snap => {
       const cmd = snap.val();
-      if (!cmd) { snap.ref.remove(); return; }
+      if (!cmd) { 
+        snap.ref.remove().catch(()=>{}); 
+        return; 
+      }
       
-      if (cmd.action === "next") { playNextSong(); }
-      else if (cmd.action === "pause" && playerReady && player) { player.pauseVideo(); }
-      else if (cmd.action === "play" && playerReady && player) { player.playVideo(); }
-      else if (cmd.action === "volUp" && playerReady && player) { player.setVolume(Math.min(player.getVolume() + 10, 100)); }
-      else if (cmd.action === "volDown" && playerReady && player) { player.setVolume(Math.max(player.getVolume() - 10, 0)); }
-      else if (cmd.action === "toggleQR") { toggleQR(); }
-      
-      snap.ref.remove();
+      try {
+        if (cmd.action === "next") { 
+          await playNextSong(); 
+        } 
+        else if (cmd.action === "toggleQR") { 
+          toggleQR(); 
+        } 
+        else if (playerReady && player) {
+          // 強制檢查函數是否存在，避免找不到方法報錯卡死
+          if (cmd.action === "pause" && typeof player.pauseVideo === "function") { 
+            player.pauseVideo(); 
+          } 
+          else if (cmd.action === "play" && typeof player.playVideo === "function") { 
+            player.playVideo(); 
+          } 
+          else if (cmd.action === "volUp" && typeof player.getVolume === "function") { 
+            let vol = player.getVolume();
+            if (typeof vol !== "number") vol = 50;
+            player.setVolume(Math.min(vol + 10, 100)); 
+          } 
+          else if (cmd.action === "volDown" && typeof player.getVolume === "function") { 
+            let vol = player.getVolume();
+            if (typeof vol !== "number") vol = 50;
+            player.setVolume(Math.max(vol - 10, 0)); 
+          } 
+          else if (cmd.action === "muteToggle" && typeof player.isMuted === "function") {
+            if (player.isMuted()) {
+              player.unMute();
+            } else {
+              player.mute();
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("指令執行錯誤，但不影響後續操作:", err);
+      } finally {
+        // 🌟 無論有沒有執行成功，一定殺掉這個指令，讓下一個指令能進來！
+        snap.ref.remove().catch(() => {});
+      }
     });
 
     window.addEventListener("keydown", e => {
